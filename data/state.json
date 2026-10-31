@@ -1,0 +1,53 @@
+{
+  "profiles": {
+    "coze": {
+      "prompt": "你是一个友善、谨慎的本地测试助手。只回答用户明确提出的问题，不执行真实外部工具。",
+      "scenario": "normal",
+      "published": true
+    },
+    "dify": {
+      "prompt": "你是一个友善、谨慎的本地测试助手。只回答用户明确提出的问题，不执行真实外部工具。",
+      "scenario": "normal",
+      "published": true
+    },
+    "http": {
+      "prompt": "本地 HTTP 回显目标",
+      "scenario": "normal",
+      "published": true
+    }
+  },
+  "tokens": [
+    {
+      "id": "tok-coze-seed",
+      "name": "Coze 演示令牌",
+      "platform": "coze",
+      "value": "coze-demo-token",
+      "active": true,
+      "created_at": "seed"
+    },
+    {
+      "id": "tok-dify-seed",
+      "name": "Dify 演示令牌",
+      "platform": "dify",
+      "value": "app-demo-dify-token",
+      "active": true,
+      "created_at": "seed"
+    },
+    {
+      "id": "tok-admin-seed",
+      "name": "控制台演示令牌",
+      "platform": "dify",
+      "value": "console-admin-token",
+      "active": true,
+      "created_at": "seed"
+    },
+    {
+      "id": "tok-http-seed",
+      "name": "HTTP 演示令牌",
+      "platform": "http",
+      "value": "http-demo-token",
+      "active": true,
+      "created_at": "seed"
+    }
+  ]
+}
