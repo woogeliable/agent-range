@@ -1,6 +1,7 @@
 """JSON API for the range."""
 import re
 import time
+from urllib.parse import parse_qs
 
 from . import config
 from . import lessons as lesson_mod
@@ -43,6 +44,10 @@ class Api:
         if path == "/api/model/status":
             self._require(method, "GET")
             return 200, self.provider.status()
+
+        if path == "/api/model/context":
+            self._require(method, "GET")
+            return 200, self._model_context(user, query)
 
         if path == "/api/lessons":
             self._require(method, "GET")
@@ -92,6 +97,16 @@ class Api:
         if match:
             self._require(method, "POST")
             return 200, self._hint(user, match.group(1))
+
+        match = re.match(r"^/api/attempts/([A-Za-z0-9_\-]+)/sinks$", path)
+        if match:
+            self._require(method, "POST")
+            return 200, self._sink(user, match.group(1), body)
+
+        match = re.match(r"^/api/attempts/([A-Za-z0-9_\-]+)/replay$", path)
+        if match:
+            self._require(method, "POST")
+            return 201, self._replay(user, match.group(1), body)
 
         raise ApiError(404, "not_found", "接口不存在")
 
@@ -265,6 +280,52 @@ class Api:
         return {
             "attempt": self.engine.public_attempt(attempt, lesson),
             "tasks": self._task_list(user, lesson),
+        }
+
+    def _sink(self, user, attempt_id, body):
+        attempt = self._attempt(user, attempt_id)
+        lesson = self._lesson(attempt["lesson_id"])
+        if not (lesson.get("target") or {}).get("xss"):
+            raise ApiError(400, "no_sink", "本关没有可触发的输出 sink")
+        sink = (body or {}).get("sink")
+        if sink != "xss":
+            raise ApiError(400, "invalid_sink", "未知的 sink")
+        try:
+            result = self.engine.record_sink(user, attempt, lesson, sink)
+        except ValueError as exc:
+            raise ApiError(400, str(exc), "无法记录 sink")
+        result["task_state"] = self._task_list(user, lesson)
+        return result
+
+    def _replay(self, user, attempt_id, body):
+        source = self._attempt(user, attempt_id)
+        lesson = self._lesson(source["lesson_id"])
+        level = (body or {}).get("level") or "hardened"
+        try:
+            result = self.engine.replay(user, source, lesson, level)
+        except ValueError as exc:
+            code = str(exc)
+            raise ApiError(400, code, "无法重放：%s" % code)
+        result["task_state"] = self._task_list(user, lesson)
+        return result
+
+    def _model_context(self, user, query):
+        status = self.provider.status()
+        if not status.get("enabled"):
+            return {"enabled": False, "status": status, "context": None}
+        params = parse_qs(query or "")
+        attempt_id = (params.get("attempt") or [""])[0]
+        if not attempt_id:
+            raise ApiError(400, "attempt_required", "需要 attempt 参数")
+        attempt = self._attempt(user, attempt_id)
+        lesson = self._lesson(attempt["lesson_id"])
+        system, user_text = self.engine.model_context(attempt, lesson)
+        return {
+            "enabled": True,
+            "status": status,
+            "system": system,
+            "user": user_text,
+            "notice": "只读对照：真实模型不会执行任何工具，结果需人工复核。",
         }
 
     def _hint(self, user, attempt_id):

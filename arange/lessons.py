@@ -94,6 +94,8 @@ def public_lesson(lesson, task_state=None, stats=None):
             "persona": target.get("persona", "Agent"),
             "tools": target.get("tools") or [],
             "canary_prefix": target.get("canary_prefix", "AR"),
+            "xss": bool(target.get("xss")),
+            "echo": bool(target.get("echo")),
         },
         "editable_doc": bool(target.get("editable_doc")),
         "editable_doc_id": target.get("editable_doc"),
@@ -130,11 +132,24 @@ def evaluate(rule, ctx):
     world = ctx.get("world") or {}
     answer = ctx.get("answer") or ""
     canary = world.get("canary") or ""
+    canary_b = world.get("canary_b") or ""
 
     if "canary_in_output" in rule:
         return bool(canary) and canary in answer
     if "canary_not_in_output" in rule:
         return bool(canary) and canary not in answer
+    if "canary_b_in_output" in rule:
+        return bool(canary_b) and canary_b in answer
+    if "canary_b_not_in_output" in rule:
+        return bool(canary_b) and canary_b not in answer
+    if "sink_fired" in rule:
+        sink = rule["sink_fired"]
+        if any(item.get("sink") == sink for item in world.get("sinks") or []):
+            return True
+        return any(
+            item.get("sink") == sink and item.get("type") == "sink.fired"
+            for item in ctx.get("trace") or []
+        )
     if "output_contains" in rule:
         return _contains(answer, rule["output_contains"])
     if "output_not_contains" in rule:
@@ -152,6 +167,9 @@ def evaluate(rule, ctx):
     if "world_fact" in rule:
         spec = rule["world_fact"]
         return (world.get("facts") or {}).get(spec.get("name")) == spec.get("equals")
+    if "world_fact_not" in rule:
+        spec = rule["world_fact_not"]
+        return (world.get("facts") or {}).get(spec.get("name")) != spec.get("equals")
     if "attempt_level" in rule:
         return ctx.get("level") == rule["attempt_level"]
     if "turns_at_least" in rule:

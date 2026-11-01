@@ -6,7 +6,9 @@ them according to the active defence profile, and only then acts. Attacks work
 by getting a directive from an untrusted segment accepted -- not by matching a
 hard-coded sentence from the tutorial.
 """
+import base64
 import re
+import unicodedata
 
 from ..world import find_owner
 
@@ -34,6 +36,7 @@ PROFILES = {
         "acl": "off",
         "blocklist": False,
         "output_dlp": False,
+        "output_encode": False,
         "approval": False,
     },
     "basic": {
@@ -43,6 +46,7 @@ PROFILES = {
         "acl": "off",
         "blocklist": True,
         "output_dlp": False,
+        "output_encode": False,
         "approval": False,
     },
     "hardened": {
@@ -52,6 +56,7 @@ PROFILES = {
         "acl": "on",
         "blocklist": False,
         "output_dlp": True,
+        "output_encode": True,
         "approval": False,
     },
     "reference": {
@@ -61,6 +66,7 @@ PROFILES = {
         "acl": "on",
         "blocklist": False,
         "output_dlp": True,
+        "output_encode": True,
         "approval": True,
     },
 }
@@ -76,6 +82,11 @@ BLOCKLIST = (
     "开发者模式",
     "developer mode",
 )
+
+ZERO_WIDTH = dict.fromkeys(
+    map(ord, "\u200b\u200c\u200d\u200e\u200f\u2060\ufeff\u00ad"), None
+)
+BASE64_TOKEN = re.compile(r"[A-Za-z0-9+/=_-]{16,}")
 
 OVERRIDE = re.compile(
     r"(忽略|无视|不要遵守|不再遵守|绕过|忘掉|忘记|从现在开始|新的?指令|系统指令|管理员指令|"
@@ -105,16 +116,48 @@ ANSWER_VERB = re.compile(
 )
 FETCH = re.compile(r"(访问|请求|打开|抓取|fetch|curl|visit|get)", re.I)
 URL = re.compile(r"(https?://[^\s，。；;'\"<>]+)", re.I)
+CRM = re.compile(r"(客户|customer|crm|联系人|contact)", re.I)
+CRM_QUERY = re.compile(r"(查询|查一下|列出|搜索|查找|过滤|query|search|list|select|filter)", re.I)
+SQL_MARK = re.compile(r"(1\s*=\s*1|'\s*or\s*'|or\s+1\s*=\s*1|union\s+select|--|tenant\s*=)", re.I)
+TICKET = re.compile(r"(工单|ticket)", re.I)
+TICKET_SET = re.compile(r"(更新|改为|改成|设置为|设为|标记|关闭|处理|update|mark|set|resolve|close)", re.I)
+TICKET_DONE = re.compile(r"(已完成|已解决|完成|关闭|resolved|done|closed)", re.I)
 
 
 def profile_for(level):
     return PROFILES.get(level, PROFILES["vulnerable"])
 
 
-def is_blocked(text):
+def normalize_for_model(text):
+    """What the model sees: NFKC, no zero-width, base64 decoded.
+
+    The blacklist sees the raw text. That gap is the lesson in 1.4.
+    """
+    cleaned = unicodedata.normalize("NFKC", text or "").translate(ZERO_WIDTH)
+    decoded = []
+    for token in BASE64_TOKEN.findall(cleaned):
+        for candidate_token in (token, token.replace("-", "+").replace("_", "/")):
+            try:
+                raw = base64.b64decode(
+                    candidate_token + "=" * (-len(candidate_token) % 4), validate=True
+                )
+                candidate = raw.decode("utf-8")
+            except Exception:
+                continue
+            if not candidate or not all(ch.isprintable() or ch in "\n\t" for ch in candidate):
+                continue
+            if any("\u4e00" <= ch <= "\u9fff" for ch in candidate) or " " in candidate:
+                decoded.append(candidate)
+                break
+    if decoded:
+        return cleaned + "\n" + "\n".join(decoded)
+    return cleaned
+
+
+def is_blocked(text, extra_terms=()):
     lowered = (text or "").lower()
-    for word in BLOCKLIST:
-        if word.lower() in lowered:
+    for word in tuple(BLOCKLIST) + tuple(extra_terms or ()):
+        if word and word.lower() in lowered:
             return word
     return None
 
@@ -134,7 +177,7 @@ def extract_directives(text):
     The same extractor runs over the user turn and over retrieved documents,
     which is exactly why an injected document can change the agent's actions.
     """
-    text = text or ""
+    text = normalize_for_model(text)
     directives = []
     override = bool(OVERRIDE.search(text))
 
@@ -158,6 +201,13 @@ def extract_directives(text):
     for url in URL.findall(text):
         if FETCH.search(text) or override:
             directives.append({"kind": "fetch_url", "url": url})
+
+    if CRM.search(text) and (CRM_QUERY.search(text) or SQL_MARK.search(text)):
+        directives.append({"kind": "crm_query", "filter": text[:500]})
+
+    if TICKET.search(text) and TICKET_SET.search(text):
+        value = "已完成" if TICKET_DONE.search(text) else "已更新"
+        directives.append({"kind": "set_fact", "fact": "ticket_status", "value": value})
 
     deduped = []
     seen = set()

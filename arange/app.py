@@ -65,7 +65,7 @@ class App:
 
 class RangeHandler(BaseHTTPRequestHandler):
     protocol_version = "HTTP/1.1"
-    server_version = "AgentRange/3.0"
+    server_version = "AgentRange/3.1"
     sys_version = ""
 
     def log_message(self, fmt, *args):

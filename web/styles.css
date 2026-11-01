@@ -1,4 +1,4 @@
-/* AgentRange 3.0 — lab notebook aesthetic */
+/* AgentRange 3.1 — lab notebook aesthetic */
 :root {
   --bg: #f4f2ec;
   --bg-deep: #ece9df;
@@ -810,4 +810,86 @@ kbd {
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
   html { scroll-behavior: auto; }
+}
+
+/* ---------------- P3: model panel, trace filters, replay ---------------- */
+.model-panel {
+  margin: 0 0 16px; border: 1px solid var(--line); border-radius: var(--radius);
+  background: var(--card); overflow: hidden;
+}
+.model-panel summary {
+  display: flex; align-items: center; gap: 8px; cursor: pointer;
+  padding: 10px 14px; font-size: 12px; font-weight: 650; list-style: none;
+  color: var(--ink-2);
+}
+.model-panel summary::-webkit-details-marker { display: none; }
+.model-panel summary .meta-chip { margin-left: auto; }
+.model-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--line); }
+.model-dot.on { background: var(--green); box-shadow: 0 0 0 3px var(--green-soft); }
+.model-body { padding: 0 14px 14px; border-top: 1px solid var(--line-soft); }
+.model-body p { margin: 10px 0; color: var(--muted); font-size: 12px; line-height: 1.65; }
+.model-preview { margin-top: 10px; }
+.model-preview h4 {
+  margin: 10px 0 4px; font-family: var(--mono); font-size: 10px;
+  text-transform: uppercase; letter-spacing: .08em; color: var(--muted);
+}
+.model-preview pre {
+  margin: 0; padding: 9px 10px; max-height: 180px; overflow: auto;
+  background: var(--card-soft); border-radius: 8px;
+  font-family: var(--mono); font-size: 11px; line-height: 1.55; white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.trace-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 12px; }
+.filter-chip {
+  border: 1px solid var(--line); background: var(--card); color: var(--muted);
+  border-radius: 999px; padding: 4px 9px; font: inherit; font-size: 11px; cursor: pointer;
+}
+.filter-chip:hover { border-color: var(--ink-2); color: var(--ink); }
+.filter-chip.is-active { border-color: var(--accent); color: var(--accent-ink); background: var(--accent-soft); }
+.trace-event.evidence {
+  background: linear-gradient(90deg, var(--danger-soft), transparent 72%);
+  border-radius: 0 8px 8px 0;
+}
+.sink-row {
+  margin: 14px 0 4px; padding: 12px; border: 1px dashed var(--line);
+  border-radius: 9px; background: var(--card-soft);
+}
+.sink-row .hint { margin: 8px 0 0; }
+
+.replay-box {
+  margin: 18px 0 12px; padding: 13px; border: 1px solid var(--line);
+  border-radius: 10px; background: var(--card-soft);
+}
+.replay-head { font-size: 12px; font-weight: 700; display: flex; gap: 8px; align-items: center; }
+.replay-row { display: flex; gap: 8px; align-items: center; margin-top: 9px; }
+.replay-row select {
+  flex: 1; min-width: 0; height: 32px; border: 1px solid var(--line);
+  border-radius: 8px; background: var(--card); color: var(--ink); padding: 0 8px; font: inherit; font-size: 12px;
+}
+.replay-result { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; margin-top: 12px; }
+.replay-col { min-width: 0; }
+.replay-col h4 { margin: 0 0 6px; font-size: 11px; color: var(--muted); }
+.replay-col pre {
+  margin: 0; padding: 9px; max-height: 150px; overflow: auto;
+  background: var(--card); border: 1px solid var(--line-soft); border-radius: 8px;
+  font-family: var(--mono); font-size: 10.5px; line-height: 1.55; white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.fact-line { margin-top: 5px; font-family: var(--mono); font-size: 10px; color: var(--muted); overflow-wrap: anywhere; }
+
+.experiments { margin-top: 10px; border-top: 1px solid var(--line-soft); padding-top: 10px; }
+.experiments summary { cursor: pointer; font-size: 11.5px; font-weight: 650; color: var(--muted); }
+.experiment-list { margin-top: 8px; display: grid; gap: 5px; }
+.experiment-item {
+  display: flex; align-items: center; gap: 7px; min-width: 0;
+  font-size: 10.5px; color: var(--muted);
+}
+.experiment-item code {
+  min-width: 0; font-family: var(--mono); font-size: 9.5px; color: var(--ink-2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+
+@media (max-width: 520px) {
+  .replay-result { grid-template-columns: 1fr; }
 }

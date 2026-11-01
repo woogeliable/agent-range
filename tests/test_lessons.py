@@ -14,7 +14,7 @@ class LessonPackTests(unittest.TestCase):
         cls.lessons = lesson_mod.load(os.path.join(ROOT, "lessons"))
 
     def test_all_packs_load_and_ids_are_stable(self):
-        self.assertEqual(set(self.lessons), {"0.1", "0.2", "1.1", "1.2", "1.3"})
+        self.assertEqual(set(self.lessons), {"0.1", "0.2", "1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "3.1", "3.2", "3.3", "5.1"})
         for lesson_id, lesson in self.lessons.items():
             self.assertEqual(lesson["id"], lesson_id)
             self.assertIn(lesson["chapter"], lesson_mod.CHAPTER_MAP)

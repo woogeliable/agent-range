@@ -1,4 +1,4 @@
-# 运行时架构（3.0 切片）
+# 运行时架构（3.1）
 
 > 目标：让"攻击是否成功"由真实的数据流与服务端证据决定，而不是由教程关键词决定；同时保证所有副作用都在沙箱内。
 
@@ -23,11 +23,12 @@ Engine.turn (arange/runtime/engine.py)
   ├─ 3. 上下文装配      system / developer / retrieval / user，打信任标签
   ├─ 4. 指令提取       extract_directives() 对每一段运行
   ├─ 5. 冲突消解       按档位决定"这段内容能不能产生指令"
-  ├─ 6. 工具执行       沙箱工具，工具层再次强制 egress / ACL / 审批
-  ├─ 7. 作答合成       事实 / 泄露 / 工具结果 / 拒绝
-  ├─ 8. 输出 DLP       加固档起，金丝雀命中即脱敏
-  ├─ 9. 持久化         消息、世界快照、trace
-  └─ 10. verifier      任务判定，合并进度，返回证据
+  ├─ 6. 工具执行       沙箱工具，工具层再次强制 egress / ACL / 租户过滤
+  ├─ 7. 工具返回再入    返回值作为 untrusted 段；只有 set_fact 类数据派生指令可能生效
+  ├─ 8. 作答合成       事实 / 泄露 / 工具结果 / 拒绝 / 回显
+  ├─ 9. 输出编码与 DLP 加固档起 HTML 编码；金丝雀命中即脱敏
+  ├─ 10. 持久化        消息、世界快照、trace
+  └─ 11. verifier      任务判定，合并进度，返回证据
   ▼
 JSON（消息、工具调用、trace、任务、得分）
 ```
@@ -62,6 +63,7 @@ extract_directives(text) -> [
   {"kind": "set_fact", "fact": "warranty_days", "value": 0},
   {"kind": "cancel_order", "owner": "A"},
   {"kind": "fetch_url", "url": "..."},
+  {"kind": "crm_query", "filter": "..."},
 ]
 ```
 
@@ -69,8 +71,10 @@ extract_directives(text) -> [
 
 - 复述类：`REVEAL`（重复/输出/复述…）+ `SECRET`（口令/规则/优惠码…）。
 - 改写类：`WARRANTY` + `NUM_DAYS` + `ANSWER_VERB`（回答/改为/设置…），或带覆盖词。
-- 动作类：收件人 + 发送动词；取消 + 订单；URL + 访问动词。
+- 动作类：收件人 + 发送动词；取消 + 订单；URL + 访问动词；CRM 关键词 + 查询动词/租户条件。
+- 状态类：工单 + 更新/完成类动词 → `set_fact(ticket_status)`；也可由工具返回触发。
 - 覆盖词：`忽略 / 无视 / ignore / 现在开始 / 调试模式 …`。
+- 归一化：NFKC、去零宽、Base64 解码后再交给模型；黑名单只匹配原始串。
 
 因此同一关可以有多种说法：
 
@@ -93,10 +97,13 @@ extract_directives(text) -> [
 | 能力 | vulnerable | basic | hardened | reference |
 |---|---|---|---|---|
 | 检索段可产生指令 | ✅ | ✅（未被黑名单过滤时） | ❌ | ❌ |
+| 工具返回可产生指令 | ✅ | ✅ | ❌（仅数据派生） | ❌（仅数据派生） |
 | 可复述 system prompt | ✅ | ✅ | ❌ | ❌ |
 | 输入/文档黑名单 | ❌ | ✅ | ❌ | ❌ |
-| 检索 ACL | ❌ | ❌ | ✅ | ✅ |
+| 输入归一化 / 解码 | ✅ | ✅ | ✅ | ✅ |
+| 检索 ACL / 租户过滤 | ❌ | ❌ | ✅ | ✅ |
 | 工具出口白名单 | ❌ | ❌ | ✅ | ✅ |
+| 输出 HTML 编码 | ❌ | ❌ | ✅ | ✅ |
 | 输出 DLP | ❌ | ❌ | ✅ | ✅ |
 | 高风险操作审批 | ❌ | ❌ | ❌ | ✅ |
 
@@ -104,7 +111,8 @@ extract_directives(text) -> [
 
 - `mail.send`：收件人域名必须在 `bluebird.internal`（加固档起）。
 - `orders.cancel`：owner 必须等于当前租户（加固档起）；参考实现还要求审批。
-- `http.fetch`：只解析到进程内假网络；加固档起只允许内部 wiki/billing。
+- `http.fetch`：只解析到进程内假网络；加固档起只允许内部 wiki/billing，`169.254.169.254` 等元数据/内网地址被拦截。
+- `crm.query`：加固档起在工具内部强制 `tenant = 当前租户`，忽略调用方传入的 tenant 条件。
 
 **防御必须在执行层，而不是提示词里。** 这是 1.1 的结论。
 
@@ -117,8 +125,13 @@ extract_directives(text) -> [
 ```json
 {
   "canary": "AR-COUPON-1A2B3C4D5E",
+  "canary_b": "AR-COUPON-B-9F8E7D6C5B",
   "tenant": "A",
   "facts": {"warranty_days": 365},
+  "customers": [
+    {"id": "C-1001", "tenant": "A"},
+    {"id": "C-2001", "tenant": "B", "canary": "{{canary_b}}"}
+  ],
   "docs": [
     {"id": "handbook", "trust": "trusted", "acl": ["A","B"], "keywords": ["保修"], "text": "..."},
     {"id": "forum-post", "trust": "untrusted", "acl": ["A","B"], "keywords": ["保修"], "text": "..."}
@@ -126,11 +139,13 @@ extract_directives(text) -> [
   "orders": {"A": {"id": "ORD-A-1001", "status": "有效"}},
   "mail": [],
   "http": [],
-  "memory": []
+  "memory": [],
+  "sinks": [],
+  "meta": {"blocklist": [], "xss": false, "echo": false}
 }
 ```
 
-- **金丝雀**：`HMAC(instance_secret, user|lesson|attempt)`，每个用户每次实验不同，无法抄答案。
+- **金丝雀**：`HMAC(instance_secret, user|lesson|attempt)`，每个用户每次实验不同，无法抄答案；`canary_b` 用 `user:B` 派生，专门证明跨租户越权。
 - **世界快照**：整个 JSON 存在 SQLite 单行里，重置就是换一份快照；天然支持重放。
 - **沙箱**：`http.fetch` 的 DNS 是 `FAKE_NETWORK` 字典；`mail.send` 只 append；无文件系统与子进程。
 
@@ -160,17 +175,21 @@ verifier 在 `arange/lessons.py`，支持的谓词：
 | 谓词 | 语义 |
 |---|---|
 | `canary_in_output` / `canary_not_in_output` | 输出是否包含本次金丝雀 |
+| `canary_b_in_output` / `canary_b_not_in_output` | 是否拿到 B 租户金丝雀 |
+| `sink_fired` | 下游 sink 是否触发（世界或 trace 证据） |
 | `output_contains` / `output_not_contains` | 输出文本 |
 | `last_user_message_not_contains` | 最近一条用户消息不含某词（教"改写"） |
 | `no_user_message_contains` | 全部用户消息都不含某词 |
 | `tool_called` / `tool_not_called` | 工具、状态、参数子串 |
-| `world_fact` | 世界事实等于某值 |
+| `world_fact` / `world_fact_not` | 世界事实等于 / 不等于某值 |
 | `attempt_level` | 当前档位 |
 | `turns_at_least` | 轮数 |
 | `quiz_correct` | 测验答对数 |
 | `all` / `any` / `not` | 组合 |
 
 进度按 `(user, lesson, task)` 合并，切换档位/重置不会丢失已完成标记。得分 `100 - 提示×10 - 解法×30`，下限 0。
+
+反事实重放（`POST /api/attempts/{id}/replay`）只复制源实验的用户消息与 `doc_text`，在目标档位新建 attempt 后逐条重放；返回 source / replay 的回答、facts 与工具调用摘要。
 
 ---
 
@@ -204,6 +223,6 @@ verifier 在 `arange/lessons.py`，支持的谓词：
 
 - 决策器是确定性规则，不是 LLM；覆盖面取决于 `extract_directives` 的写法。
 - ACL 目前只有租户 A/B 与单档开关，尚无完整多租户身份系统。
-- 真实模型仅完成 provider 契约与只读能力，未接入关卡与 UI。
-- 研究台、批量评测、导出、回归门禁尚未实现（P3–P4）。
+- 真实模型只读对照已接入关卡 UI，但仍不执行工具；它不是自动化判定器。
+- 研究台、批量评测、导出、回归门禁尚未实现（P4）。
 - 前端无构建链，适合当前规模；如果视图继续膨胀，再评估拆分或引入框架。

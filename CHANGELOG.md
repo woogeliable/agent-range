@@ -1,5 +1,29 @@
 # Changelog
 
+## 3.1.0 — 2026-11-01
+
+P3：把 MVP 从 5 关扩到 12 关，并补上研究/对比所需的观测与重放能力。
+
+### Added
+- 7 个新关卡：`1.4` 过滤器绕过、`2.1` 知识库投毒、`2.2` 多租户检索越权、`3.1` 工具参数注入、`3.2` 混淆代理、`3.3` SSRF、`5.1` 不安全输出 → XSS。
+- 工具返回二次入上下文：`crm.query` 的备注在漏洞版可产生指令，加固版按 untrusted 数据拒绝。
+- 虚拟世界新增 `canary_b`（B 租户金丝雀）、`customers`、`sinks`、`meta.blocklist / xss / echo`；检索支持 owner 过滤与 boost。
+- 新工具：`crm.query`；`http.fetch` 假网络新增 `169.254.169.254`、`10.0.0.5`、`admin.internal`。
+- 新 verifier：`canary_b_in_output`、`canary_b_not_in_output`、`world_fact_not`、`sink_fired`。
+- API：`POST /api/attempts/{id}/sinks`、`POST /api/attempts/{id}/replay`、`GET /api/model/context`。
+- 前端：trace 类型过滤与证据高亮、实验记录、反事实重放对比、真实模型只读对照面板、XSS 下游渲染按钮。
+- 70 项自动化测试。
+
+### Changed
+- 版本号 3.1.0；`Server: AgentRange/3.1`。
+- 输入归一化：NFKC + 去零宽 + Base64 解码后交给模型，黑名单仍看原始串（1.4 的教学点）。
+- trace 新增 `context.tool_result`、`sink.fired` 事件。
+- 反事实重放只复制用户消息，不复制源实验的助手回答或世界状态。
+
+### Deferred
+- 研究台批量评测、ASR/良性误拦率、导出与回归门禁（P4）。
+- 剩余 13 关、讲师视图、Docker、双语（P5）。
+
 ## 3.0.0-slice — 2026-11-01
 
 P1–P2 纵向切片：从「Dify/Coze 接口模拟器」重构为课程化 AI 应用安全靶场。

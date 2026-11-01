@@ -230,11 +230,11 @@ async function renderCourse(token) {
 
       <footer class="footer">
         <div>
-          <strong>AgentRange 3.0</strong> · AI 应用安全靶场<br>
+          <strong>AgentRange 3.1</strong> · AI 应用安全靶场<br>
           本地优先 · 默认零外网 · 所有实体、订单与文档均为虚构数据
         </div>
         <div>
-          当前交付：P1–P2 纵向切片（5 关）<br>
+          当前交付：MVP 12 关（P1–P3）<br>
           MVP 12 关 · 研究台 · 真实模型接入按 P3–P5 推进
         </div>
       </footer>

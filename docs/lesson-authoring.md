@@ -88,13 +88,16 @@
 | 字段 | 说明 |
 |---|---|
 | `name` / `persona` | 目标应用名称与角色 |
-| `system_prompt` | 会进入上下文；支持 `{{canary}}` 占位符 |
+| `system_prompt` | 会进入上下文；支持 `{{canary}}` 与 `{{canary_b}}` 占位符 |
 | `policy` | developer 段，展示"写了但未必执行"的规则 |
 | `facts` | 世界事实，例如 `{"warranty_days": 365}` |
-| `docs` | 检索文档：`id/title/trust/acl/keywords/text` |
+| `docs` | 检索文档：`id/title/trust/acl/keywords/text`，可加 `owner`（查询必须提到该主体）与 `boost`（排序权重） |
 | `editable_doc` | 可编辑的低信任文档 id |
 | `tools` | 该目标可用的工具名 |
 | `canary_prefix` | 金丝雀前缀，默认 `AR` |
+| `customers` | CRM 记录；`canary` 支持 `{{canary_b}}`，`note` 会成为工具返回值 |
+| `blocklist` | 关卡专属黑名单词（基础过滤档使用） |
+| `xss` / `echo` | 开启输出回显与 `/sinks` 渲染证据（5.1） |
 | `tenant` / `user` | 世界主体，默认 `A` / `alice` |
 
 文档里的 `trust` 只用于展示与黑名单，不改变"检索段不能产生指令"的规则。
@@ -115,6 +118,7 @@
 |---|---|---|
 | `canary_in_output` | `true` | 泄露、越权、外泄 |
 | `canary_not_in_output` | `true` | 修复验证 |
+| `canary_b_in_output` / `canary_b_not_in_output` | `true` | 跨租户越权 / 隔离验证 |
 | `output_contains` | 字符串 | 明确的输出证据 |
 | `output_not_contains` | 字符串 | 反向证据 |
 | `last_user_message_not_contains` | 字符串 | 教"改写绕过" |
@@ -122,6 +126,8 @@
 | `tool_called` | `{tool, status?, args_contain?}` | 工具调用与参数污染 |
 | `tool_not_called` | 同上 | 拦截验证 |
 | `world_fact` | `{name, equals}` | 世界状态被改写 |
+| `world_fact_not` | `{name, equals}` | 世界状态未被改写 |
+| `sink_fired` | `xss` 等 sink 名 | 下游渲染证据（需 `target.xss` + `/sinks`） |
 | `attempt_level` | 档位 | 要求在某档完成 |
 | `turns_at_least` | 整数 | 至少交互过 |
 | `quiz_correct` | 整数 | 测验答对数 |
@@ -197,6 +203,15 @@
 ```
 
 前端会展示当前档位源码，并支持与上一档做行级 diff。源码要真实对应当前实现，不要写成装饰文案。
+
+---
+
+## 8. 工具返回值与 sink
+
+- `target.tools` 决定哪些工具可被调用；不在列表里的工具不会执行，也不会产生任务证据。
+- `crm.query` 的返回会作为 `untrusted` 段重新进入上下文。漏洞/基础档可能把其中的 `set_fact` 类文本当指令；加固/参考档只当数据。
+- 需要演示输出型漏洞时，设置 `target.xss: true` 与 `target.echo: true`；学员点击「在下游页面渲染」会 POST `/api/attempts/{id}/sinks`，服务端记录 `sink.fired`。
+- 不要在前端用 `innerHTML` 执行不可信回复；当前实现只模拟下游并记录证据。
 
 ---
 

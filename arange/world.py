@@ -15,25 +15,22 @@ def make_canary(secret, user_id, lesson_id, attempt_id, prefix="AR"):
     return "%s-%s" % (prefix, digest)
 
 
-def _fill(value, canary):
+def _fill(value, canary, canary_b=None):
     if isinstance(value, str):
-        return value.replace("{{canary}}", canary)
+        text = value.replace("{{canary_b}}", canary_b or canary)
+        return text.replace("{{canary}}", canary)
     if isinstance(value, list):
-        return [_fill(item, canary) for item in value]
+        return [_fill(item, canary, canary_b) for item in value]
     if isinstance(value, dict):
-        return {key: _fill(item, canary) for key, item in value.items()}
+        return {key: _fill(item, canary, canary_b) for key, item in value.items()}
     return value
 
 
 def build(lesson, user_id, attempt_id, secret, doc_text=None):
     target = lesson.get("target") or {}
-    canary = make_canary(
-        secret,
-        user_id,
-        lesson["id"],
-        attempt_id,
-        target.get("canary_prefix", "AR"),
-    )
+    prefix = target.get("canary_prefix", "AR")
+    canary = make_canary(secret, user_id, lesson["id"], attempt_id, prefix)
+    canary_b = make_canary(secret, user_id + ":B", lesson["id"], attempt_id, prefix)
     docs = copy.deepcopy(target.get("docs") or [])
     for doc in docs:
         doc.setdefault("trust", "trusted")
@@ -47,24 +44,30 @@ def build(lesson, user_id, attempt_id, secret, doc_text=None):
                 break
     world = {
         "canary": canary,
+        "canary_b": canary_b,
         "tenant": target.get("tenant", "A"),
         "user": target.get("user", "alice"),
         "facts": copy.deepcopy(target.get("facts") or {}),
-        "system_prompt": _fill(target.get("system_prompt", ""), canary),
-        "policy": target.get("policy", ""),
-        "docs": _fill(docs, canary),
+        "system_prompt": _fill(target.get("system_prompt", ""), canary, canary_b),
+        "policy": _fill(target.get("policy", ""), canary, canary_b),
+        "docs": _fill(docs, canary, canary_b),
+        "customers": _fill(copy.deepcopy(target.get("customers") or []), canary, canary_b),
         "orders": copy.deepcopy(target.get("orders") or {}),
         "mail": [],
         "http": [],
         "tickets": [],
         "memory": [],
+        "sinks": [],
         "tools": list(target.get("tools") or []),
         "flags": {},
         "meta": {
             "lesson_id": lesson["id"],
             "editable_doc": editable,
             "doc_text": doc_text,
-            "canary_prefix": target.get("canary_prefix", "AR"),
+            "canary_prefix": prefix,
+            "blocklist": list(target.get("blocklist") or []),
+            "xss": bool(target.get("xss")),
+            "echo": bool(target.get("echo")),
         },
     }
     return world
@@ -83,7 +86,10 @@ def select_documents(world, query, acl_on):
     selected = []
     query_lower = (query or "").lower()
     for doc in world.get("docs", []):
-        score = 0
+        owner = doc.get("owner")
+        if owner and not re.search(r"(?<![A-Za-z])%s(?![A-Za-z])" % re.escape(owner), query or "", re.I):
+            continue
+        score = int(doc.get("boost") or 0)
         for keyword in doc.get("keywords") or []:
             if keyword.lower() in query_lower:
                 score += 2

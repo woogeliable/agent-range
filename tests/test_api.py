@@ -69,7 +69,7 @@ class ApiTests(unittest.TestCase):
         status, headers, raw = self.request("/api/me")
         self.assertEqual(status, 200)
         me = json.loads(raw)
-        self.assertEqual(me["progress"]["lessons_total"], 5)
+        self.assertEqual(me["progress"]["lessons_total"], 12)
         self.assertFalse(me["model"]["enabled"])
 
     def test_course_map(self):
@@ -77,8 +77,8 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(payload["chapters"]), 8)
         lessons = [lesson for chapter in payload["chapters"] for lesson in chapter["lessons"]]
-        self.assertEqual({lesson["id"] for lesson in lessons}, {"0.1", "0.2", "1.1", "1.2", "1.3"})
-        self.assertEqual(payload["progress"]["tasks_total"], 14)
+        self.assertEqual({lesson["id"] for lesson in lessons}, {"0.1", "0.2", "1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "3.1", "3.2", "3.3", "5.1"})
+        self.assertEqual(payload["progress"]["tasks_total"], 35)
 
     def test_full_attempt_flow(self):
         status, _, payload = self.json("/api/lessons/1.1/attempts", "POST", {"level": "vulnerable"})
