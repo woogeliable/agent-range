@@ -1,6 +1,8 @@
+import atexit
 import json
 import os
 import sys
+import tempfile
 import threading
 import unittest
 import urllib.error
@@ -8,6 +10,11 @@ import urllib.request
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
+_tmp = tempfile.TemporaryDirectory()
+atexit.register(_tmp.cleanup)
+os.environ['AGENT_RANGE_STATE_PATH'] = os.path.join(_tmp.name, 'state.json')
+os.environ['AGENT_RANGE_CONTROL_TOKEN'] = 'local-test-control'
+os.environ['AGENT_RANGE_DEMO_LOGIN'] = '1'
 import server
 
 class APITests(unittest.TestCase):
@@ -20,13 +27,14 @@ class APITests(unittest.TestCase):
 
     @classmethod
     def tearDownClass(cls):
-        req = urllib.request.Request(cls.base + "/control/reset", data=b"{}", method="POST", headers={"Content-Type":"application/json"})
+        req = urllib.request.Request(cls.base + "/control/reset", data=b"{}", method="POST", headers={"Content-Type":"application/json", "Authorization":"Bearer local-test-control"})
         urllib.request.urlopen(req, timeout=3).read()
         cls.http.shutdown(); cls.http.server_close(); cls.thread.join(timeout=2)
 
     def request(self, path, method="GET", body=None, token=None):
         headers = {"Content-Type":"application/json"}
         if token: headers["Authorization"] = "Bearer " + token
+        elif path.startswith("/control/"): headers["Authorization"] = "Bearer local-test-control"
         data = json.dumps(body).encode() if body is not None else None
         req = urllib.request.Request(self.base + path, data=data, method=method, headers=headers)
         try:

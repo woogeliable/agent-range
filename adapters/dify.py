@@ -7,6 +7,7 @@ class DifyAdapter(Adapter):
 
     def handle(self, handler, method, path, query, body):
         if path == "/console/api/login" and method == "POST":
+            if not handler.demo_login_enabled: return 403, {}, {"code":"demo_login_disabled","message":"模拟登录未启用"}
             username = body.get("email") or body.get("username") or body.get("account")
             password = body.get("password")
             if username == "admin" and password == "admin":
@@ -39,10 +40,15 @@ class DifyAdapter(Adapter):
             if not body.get("query"):
                 return 400, {}, {"code":"bad_request","message":"query is required","status":400}
             mode = body.get("response_mode", "blocking")
-            answer = handler.reply("dify", str(body.get("query", "")))
+            if mode not in ("blocking", "streaming"): return 400, {}, {"code":"bad_request","message":"response_mode must be blocking or streaming","status":400}
+            try: lab_result = handler.lab_reply(str(body.get("query", "")))
+            except LookupError: return 404, {}, {"code":"experiment_unavailable"}
+            except OverflowError: return 429, {}, {"code":"turn_limit"}
+            except ValueError: return 400, {}, {"code":"bad_request"}
+            answer = lab_result["answer"] if lab_result else handler.reply("dify", str(body.get("query", "")))
             if mode == "streaming":
                 chunks = [answer[i:i+18] for i in range(0, len(answer), 18)] or [""]
-                return 200, {"_stream":"sse"}, {"chunks":chunks,"conversation_id":body.get("conversation_id") or str(uuid.uuid4()),"message_id":str(uuid.uuid4()),"created_at":int(time.time()),"task_id":str(uuid.uuid4()),"id":str(uuid.uuid4())}
+                return 200, {"_stream":"sse"}, {"chunks":chunks,"conversation_id":body.get("conversation_id") or str(uuid.uuid4()),"message_id":str(uuid.uuid4()),"created_at":int(time.time()),"task_id":str(uuid.uuid4()),"id":str(uuid.uuid4()),"exposed_tool":lab_result.get("exposed_tool") if lab_result else None}
             if mode != "blocking": return 400, {}, {"code":"bad_request","message":"response_mode must be blocking or streaming","status":400}
-            return 200, {}, {"event":"message","task_id":str(uuid.uuid4()),"id":str(uuid.uuid4()),"message_id":str(uuid.uuid4()),"conversation_id":body.get("conversation_id") or str(uuid.uuid4()),"mode":"chat","answer":answer,"metadata":{"usage":{"prompt_tokens":0,"completion_tokens":len(answer),"total_tokens":len(answer)},"retriever_resources":[]},"created_at":int(time.time())}
+            return 200, {}, {"event":"message","task_id":str(uuid.uuid4()),"id":str(uuid.uuid4()),"message_id":str(uuid.uuid4()),"conversation_id":body.get("conversation_id") or str(uuid.uuid4()),"mode":"chat","answer":answer,"metadata":{"usage":{"prompt_tokens":0,"completion_tokens":len(answer),"total_tokens":len(answer)},"retriever_resources":[], **({"agent_thoughts":[lab_result["exposed_tool"]]} if lab_result and lab_result.get("exposed_tool") else {})},"created_at":int(time.time())}
         return 404, {}, {"code":"not_found","message":f"Dify endpoint not found: {path}","status":404}

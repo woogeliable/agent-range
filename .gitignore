@@ -6,3 +6,6 @@ __pycache__/
 *.log
 .DS_Store
 Thumbs.db
+
+.agent-range/
+data/state.json
