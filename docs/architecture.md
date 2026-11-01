@@ -1,4 +1,4 @@
-# 运行时架构（3.1）
+# 运行时架构（3.2）
 
 > 目标：让"攻击是否成功"由真实的数据流与服务端证据决定，而不是由教程关键词决定；同时保证所有副作用都在沙箱内。
 
@@ -20,11 +20,11 @@ Engine.turn (arange/runtime/engine.py)
   │
   ├─ 1. 输入策略       blocklist（仅基础过滤档）
   ├─ 2. 检索           keyword 召回 + ACL + 黑名单过滤
-  ├─ 3. 上下文装配      system / developer / retrieval / user，打信任标签
+  ├─ 3. 上下文装配      system / developer / retrieval / mcp / memory / agent / user，打信任标签
   ├─ 4. 指令提取       extract_directives() 对每一段运行
   ├─ 5. 冲突消解       按档位决定"这段内容能不能产生指令"
   ├─ 6. 工具执行       沙箱工具，工具层再次强制 egress / ACL / 租户过滤
-  ├─ 7. 工具返回再入    返回值作为 untrusted 段；只有 set_fact 类数据派生指令可能生效
+  ├─ 7. 二次入上下文    工具返回、子 Agent 消息作为 untrusted 段；按档位决定能否派生指令
   ├─ 8. 作答合成       事实 / 泄露 / 工具结果 / 拒绝 / 回显
   ├─ 9. 输出编码与 DLP 加固档起 HTML 编码；金丝雀命中即脱敏
   ├─ 10. 持久化        消息、世界快照、trace
@@ -41,12 +41,12 @@ JSON（消息、工具调用、trace、任务、得分）
 
 | 字段 | 含义 |
 |---|---|
-| `role` | 在提示词结构里的位置：`system` / `developer` / `retrieval` / `user` |
-| `origin` | 内容从哪来：`system` / `developer` / `retrieval` / `user` / `tool` / `memory` |
+| `role` | 在提示词结构里的位置：`system` / `developer` / `retrieval` / `mcp` / `memory` / `agent` / `user` |
+| `origin` | 内容从哪来：`system` / `developer` / `retrieval` / `user` / `tool` / `mcp` / `memory` / `agent` |
 | `trust` | 展示与策略用的信任标签：`system` / `developer` / `user` / `trusted` / `untrusted` / `tool` |
 
 **只有 `origin in (system, developer)` 的内容可以无条件产生指令。**
-用户消息可以产生指令，但要经过档位策略；检索、工具返回、记忆永远是数据。
+用户消息可以产生指令，但要经过档位策略；检索、工具返回、MCP 工具描述、长期记忆、子 Agent 消息在加固档永远只是数据——漏洞档则会把它们当成可信配置，这是 4.1–4.3 的攻击面。
 
 > 注意：`trust=trusted` 的检索文档仍然是数据，不是指令源。这是 1.3 的核心教学点。
 
@@ -64,6 +64,9 @@ extract_directives(text) -> [
   {"kind": "cancel_order", "owner": "A"},
   {"kind": "fetch_url", "url": "..."},
   {"kind": "crm_query", "filter": "..."},
+  {"kind": "memory_write", "text": "..."},
+  {"kind": "agent_request", "task": "..."},
+  {"kind": "refund_create", "amount": 999, "claimed_days": 90},
 ]
 ```
 
@@ -71,7 +74,8 @@ extract_directives(text) -> [
 
 - 复述类：`REVEAL`（重复/输出/复述…）+ `SECRET`（口令/规则/优惠码…）。
 - 改写类：`WARRANTY` + `NUM_DAYS` + `ANSWER_VERB`（回答/改为/设置…），或带覆盖词。
-- 动作类：收件人 + 发送动词；取消 + 订单；URL + 访问动词；CRM 关键词 + 查询动词/租户条件。
+- 动作类：收件人 + 发送动词；取消 + 订单；URL + 访问动词；CRM 关键词 + 查询动词/租户条件；
+  「记住 / 长期记忆」→ `memory_write`；「让 worker / 子 Agent」→ `agent_request`；「退款 + 金额」→ `refund_create`。
 - 状态类：工单 + 更新/完成类动词 → `set_fact(ticket_status)`；也可由工具返回触发。
 - 覆盖词：`忽略 / 无视 / ignore / 现在开始 / 调试模式 …`。
 - 归一化：NFKC、去零宽、Base64 解码后再交给模型；黑名单只匹配原始串。
@@ -106,6 +110,9 @@ extract_directives(text) -> [
 | 输出 HTML 编码 | ❌ | ❌ | ✅ | ✅ |
 | 输出 DLP | ❌ | ❌ | ✅ | ✅ |
 | 高风险操作审批 | ❌ | ❌ | ❌ | ✅ |
+| 校验子 Agent 来源（`verify_agents`） | ❌ | ❌ | ✅ | ✅ |
+| 输出参数化，不拼下游命令（`output_parameterize`） | ❌ | ❌ | ✅ | ✅ |
+| 退款前校验引用政策（`verify_policy`） | ❌ | ❌ | ✅ | ✅ |
 
 工具层会再次强制：
 
@@ -113,6 +120,8 @@ extract_directives(text) -> [
 - `orders.cancel`：owner 必须等于当前租户（加固档起）；参考实现还要求审批。
 - `http.fetch`：只解析到进程内假网络；加固档起只允许内部 wiki/billing，`169.254.169.254` 等元数据/内网地址被拦截。
 - `crm.query`：加固档起在工具内部强制 `tenant = 当前租户`，忽略调用方传入的 tenant 条件。
+- `agent.ask`：返回 `worker_report`；加固档起消息标为 unverified，不能直接执行其中的指令。
+- `refund.create`：沙箱退款；`verify_policy` 档校验 `claimed_days` 不超过 `facts.refund_policy_days`，否则 `blocked/policy_mismatch`。
 
 **防御必须在执行层，而不是提示词里。** 这是 1.1 的结论。
 
@@ -139,15 +148,18 @@ extract_directives(text) -> [
   "orders": {"A": {"id": "ORD-A-1001", "status": "有效"}},
   "mail": [],
   "http": [],
+  "mcp_tools": [{"name": "crm.lookup", "description": "..."}],
+  "worker_report": "...",
+  "refunds": [],
   "memory": [],
   "sinks": [],
-  "meta": {"blocklist": [], "xss": false, "echo": false}
+  "meta": {"blocklist": [], "xss": false, "echo": false, "downstream": "sql", "memory_loaded": false}
 }
 ```
 
 - **金丝雀**：`HMAC(instance_secret, user|lesson|attempt)`，每个用户每次实验不同，无法抄答案；`canary_b` 用 `user:B` 派生，专门证明跨租户越权。
 - **世界快照**：整个 JSON 存在 SQLite 单行里，重置就是换一份快照；天然支持重放。
-- **沙箱**：`http.fetch` 的 DNS 是 `FAKE_NETWORK` 字典；`mail.send` 只 append；无文件系统与子进程。
+- **沙箱**：`http.fetch` 的 DNS 是 `FAKE_NETWORK` 字典；`mail.send` / `refund.create` 只改虚构世界；SQL 下游是字符串模拟器，不连接数据库；无文件系统与子进程。
 
 ---
 
@@ -163,6 +175,7 @@ extract_directives(text) -> [
 | `messages` | 对话与工具调用元数据 |
 | `progress` | 每用户每关每任务的完成时间 |
 | `lesson_stats` | 提示次数、是否看过解法 |
+| `memories` | 每个用户每关的长期记忆（4.2 跨 attempt 注入） |
 
 实验 24 小时过期，访问时惰性清理。删除实验不会删除进度。
 
@@ -176,12 +189,14 @@ verifier 在 `arange/lessons.py`，支持的谓词：
 |---|---|
 | `canary_in_output` / `canary_not_in_output` | 输出是否包含本次金丝雀 |
 | `canary_b_in_output` / `canary_b_not_in_output` | 是否拿到 B 租户金丝雀 |
-| `sink_fired` | 下游 sink 是否触发（世界或 trace 证据） |
+| `sink_fired` | 下游 sink 是否触发（`xss` / `sql`，世界或 trace 证据） |
 | `output_contains` / `output_not_contains` | 输出文本 |
 | `last_user_message_not_contains` | 最近一条用户消息不含某词（教"改写"） |
 | `no_user_message_contains` | 全部用户消息都不含某词 |
 | `tool_called` / `tool_not_called` | 工具、状态、参数子串 |
 | `world_fact` / `world_fact_not` | 世界事实等于 / 不等于某值 |
+| `memory_loaded` / `memory_contains` | 本次 attempt 是否注入记忆 / 记忆是否包含某串 |
+| `order_status` | 某订单当前状态（4.3） |
 | `attempt_level` | 当前档位 |
 | `turns_at_least` | 轮数 |
 | `quiz_correct` | 测验答对数 |
@@ -189,7 +204,7 @@ verifier 在 `arange/lessons.py`，支持的谓词：
 
 进度按 `(user, lesson, task)` 合并，切换档位/重置不会丢失已完成标记。得分 `100 - 提示×10 - 解法×30`，下限 0。
 
-反事实重放（`POST /api/attempts/{id}/replay`）只复制源实验的用户消息与 `doc_text`，在目标档位新建 attempt 后逐条重放；返回 source / replay 的回答、facts 与工具调用摘要。
+反事实重放（`POST /api/attempts/{id}/replay`）只复制源实验的用户消息与 `doc_text`，在目标档位新建 attempt 后逐条重放；返回 source / replay 的回答、facts 与工具调用摘要。长期记忆按用户+关卡共享，重放会读到同一份记忆。
 
 ---
 

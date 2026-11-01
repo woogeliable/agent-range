@@ -119,6 +119,32 @@ def call(name, args, world, profile):
         header = "已按当前租户参数化查询。\n" if scoped else ""
         return _result(name, args, "ok", header + "\n".join(lines))
 
+    if name == "agent.ask":
+        agent = (args.get("agent") or "worker").lower()
+        report = world.get("worker_report") or "worker：没有新的报告。"
+        return _result(name, args, "ok", report)
+
+    if name == "refund.create":
+        try:
+            amount = int(args.get("amount") or 0)
+            claimed = int(args.get("claimed_days") or 0)
+        except (TypeError, ValueError):
+            return _result(name, args, "error", reason="invalid_amount")
+        if amount <= 0:
+            return _result(name, args, "error", reason="invalid_amount")
+        trusted = int((world.get("facts") or {}).get("refund_policy_days") or 0)
+        if profile.get("verify_policy") and (claimed <= 0 or claimed > trusted):
+            return _result(name, args, "blocked", reason="policy_mismatch")
+        entry = {
+            "amount": amount,
+            "claimed_days": claimed,
+            "trusted_days": trusted,
+            "by": world.get("user"),
+            "at": int(time.time()),
+        }
+        world.setdefault("refunds", []).append(entry)
+        return _result(name, args, "ok", "已创建退款 %d 元（引用政策 %d 天）。" % (amount, claimed))
+
     if name == "memory.write":
         world.setdefault("memory", []).append(
             {"text": args.get("text", ""), "by": world.get("user"), "at": int(time.time())}

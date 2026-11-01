@@ -1,3 +1,3 @@
-"""AgentRange 3.1 — an AI application security range."""
+"""AgentRange 3.2 — an AI application security range."""
 
-__version__ = "3.1.0"
+__version__ = "3.2.0"

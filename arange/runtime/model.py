@@ -38,6 +38,9 @@ PROFILES = {
         "output_dlp": False,
         "output_encode": False,
         "approval": False,
+        "verify_agents": False,
+        "output_parameterize": False,
+        "verify_policy": False,
     },
     "basic": {
         "untrusted_directives": True,
@@ -48,6 +51,9 @@ PROFILES = {
         "output_dlp": False,
         "output_encode": False,
         "approval": False,
+        "verify_agents": False,
+        "output_parameterize": False,
+        "verify_policy": False,
     },
     "hardened": {
         "untrusted_directives": False,
@@ -58,6 +64,9 @@ PROFILES = {
         "output_dlp": True,
         "output_encode": True,
         "approval": False,
+        "verify_agents": True,
+        "output_parameterize": True,
+        "verify_policy": True,
     },
     "reference": {
         "untrusted_directives": False,
@@ -68,6 +77,9 @@ PROFILES = {
         "output_dlp": True,
         "output_encode": True,
         "approval": True,
+        "verify_agents": True,
+        "output_parameterize": True,
+        "verify_policy": True,
     },
 }
 
@@ -122,6 +134,13 @@ SQL_MARK = re.compile(r"(1\s*=\s*1|'\s*or\s*'|or\s+1\s*=\s*1|union\s+select|--|t
 TICKET = re.compile(r"(工单|ticket)", re.I)
 TICKET_SET = re.compile(r"(更新|改为|改成|设置为|设为|标记|关闭|处理|update|mark|set|resolve|close)", re.I)
 TICKET_DONE = re.compile(r"(已完成|已解决|完成|关闭|resolved|done|closed)", re.I)
+REMEMBER = re.compile(r"(记住|记下来|写入记忆|长期记忆|remember)", re.I)
+AGENT = re.compile(r"(子 ?agent|子代理|worker|mcp|让.{0,10}汇报)", re.I)
+AGENT_ASK = re.compile(r"(汇报|报告|查询|问问|ask|report|check)", re.I)
+REFUND = re.compile(r"(退款|refund)", re.I)
+AMOUNT = re.compile(r"(\d{1,6})\s*(?:元|块|rmb|cny|美元)", re.I)
+CLAIM_DAYS = re.compile(r"(\d{1,4})\s*天", re.I)
+REFUND_VERB = re.compile(r"(给我|帮我|申请|办理|执行|退|refund)", re.I)
 
 
 def profile_for(level):
@@ -208,6 +227,23 @@ def extract_directives(text):
     if TICKET.search(text) and TICKET_SET.search(text):
         value = "已完成" if TICKET_DONE.search(text) else "已更新"
         directives.append({"kind": "set_fact", "fact": "ticket_status", "value": value})
+
+    if REMEMBER.search(text):
+        directives.append({"kind": "memory_write", "text": text[:500]})
+
+    if AGENT.search(text) and AGENT_ASK.search(text):
+        directives.append({"kind": "agent_request", "agent": "worker", "task": text[:300]})
+
+    if REFUND.search(text) and AMOUNT.search(text) and REFUND_VERB.search(text):
+        amount = int(AMOUNT.search(text).group(1))
+        claimed = CLAIM_DAYS.search(text)
+        directives.append(
+            {
+                "kind": "refund_create",
+                "amount": amount,
+                "claimed_days": int(claimed.group(1)) if claimed else 0,
+            }
+        )
 
     deduped = []
     seen = set()

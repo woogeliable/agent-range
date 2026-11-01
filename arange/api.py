@@ -286,11 +286,16 @@ class Api:
     def _sink(self, user, attempt_id, body):
         attempt = self._attempt(user, attempt_id)
         lesson = self._lesson(attempt["lesson_id"])
-        if not (lesson.get("target") or {}).get("xss"):
+        target = lesson.get("target") or {}
+        if not (target.get("xss") or target.get("downstream")):
             raise ApiError(400, "no_sink", "本关没有可触发的输出 sink")
         sink = (body or {}).get("sink")
-        if sink != "xss":
+        if sink not in ("xss", "sql"):
             raise ApiError(400, "invalid_sink", "未知的 sink")
+        if sink == "xss" and not target.get("xss"):
+            raise ApiError(400, "no_sink", "本关没有 XSS sink")
+        if sink == "sql" and target.get("downstream") != "sql":
+            raise ApiError(400, "no_sink", "本关没有 SQL 下游")
         try:
             result = self.engine.record_sink(user, attempt, lesson, sink)
         except ValueError as exc:

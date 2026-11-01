@@ -82,6 +82,7 @@
 | `benign` |  | 良性基线问题，后续研究台使用 |
 | `quiz` | quiz ✅ | 见下 |
 | `target.editable_doc` |  | 允许学员编辑的低信任文档 id |
+| `target.editable_tool` |  | 允许学员编辑描述的 MCP 工具 id（4.1） |
 
 ### target
 
@@ -93,7 +94,12 @@
 | `facts` | 世界事实，例如 `{"warranty_days": 365}` |
 | `docs` | 检索文档：`id/title/trust/acl/keywords/text`，可加 `owner`（查询必须提到该主体）与 `boost`（排序权重） |
 | `editable_doc` | 可编辑的低信任文档 id |
-| `tools` | 该目标可用的工具名 |
+| `editable_tool` | 可编辑描述的 MCP 工具 id；与 `editable_doc` 二选一 |
+| `mcp_tools` | MCP 工具列表：`name` + `description`，描述会成为 untrusted 段（4.1） |
+| `worker_report` | 子 Agent 返回的报告文本（4.3） |
+| `refunds` | 退款记录初始值；`refund.create` 会 append |
+| `downstream` | `sql` 时开启 SQL 模拟器；配合 `echo` 使用（5.2） |
+| `tools` | 该目标可用的工具名；`agent.ask` / `refund.create` 也在此声明 |
 | `canary_prefix` | 金丝雀前缀，默认 `AR` |
 | `customers` | CRM 记录；`canary` 支持 `{{canary_b}}`，`note` 会成为工具返回值 |
 | `blocklist` | 关卡专属黑名单词（基础过滤档使用） |
@@ -127,7 +133,10 @@
 | `tool_not_called` | 同上 | 拦截验证 |
 | `world_fact` | `{name, equals}` | 世界状态被改写 |
 | `world_fact_not` | `{name, equals}` | 世界状态未被改写 |
-| `sink_fired` | `xss` 等 sink 名 | 下游渲染证据（需 `target.xss` + `/sinks`） |
+| `sink_fired` | `xss` / `sql` | 下游渲染或 SQL 执行证据（需 `target.xss` 或 `target.downstream: "sql"` + `/sinks`） |
+| `memory_loaded` | `true` | 本次 attempt 注入了长期记忆（4.2） |
+| `memory_contains` | 字符串 | 长期记忆包含某串（4.2） |
+| `order_status` | `{owner, equals}` | 订单状态（4.3） |
 | `attempt_level` | 档位 | 要求在某档完成 |
 | `turns_at_least` | 整数 | 至少交互过 |
 | `quiz_correct` | 整数 | 测验答对数 |
@@ -210,12 +219,15 @@
 
 - `target.tools` 决定哪些工具可被调用；不在列表里的工具不会执行，也不会产生任务证据。
 - `crm.query` 的返回会作为 `untrusted` 段重新进入上下文。漏洞/基础档可能把其中的 `set_fact` 类文本当指令；加固/参考档只当数据。
-- 需要演示输出型漏洞时，设置 `target.xss: true` 与 `target.echo: true`；学员点击「在下游页面渲染」会 POST `/api/attempts/{id}/sinks`，服务端记录 `sink.fired`。
-- 不要在前端用 `innerHTML` 执行不可信回复；当前实现只模拟下游并记录证据。
+- 需要演示 XSS 输出型漏洞时，设置 `target.xss: true` 与 `target.echo: true`；学员点击「在下游页面渲染」会 POST `/api/attempts/{id}/sinks`，body `{"sink": "xss"}`，服务端记录 `sink.fired`。
+- 需要演示 SQL 输出型漏洞时，设置 `target.downstream: "sql"` 与 `target.echo: true`；按钮会 POST `{"sink": "sql"}`。只有输出里真的出现 `OR 1=1` / `DROP TABLE` / `UNION SELECT` / `--` 才 `fired: true`，参数化的 `?` 不算。
+- `editable_tool` 与 `mcp_tools` 配合：学员在关卡页编辑工具描述，服务端用它重建世界；漏洞档会把描述当可信配置，加固档只当数据。
+- `agent.ask` 的返回会作为 `context.agent_message` 单列并再次解析；`verify_agents` 档拒绝未验证消息。
+- 不要在前端用 `innerHTML` 执行不可信回复；当前实现只模拟下游并记录证据，不连接真实数据库。
 
 ---
 
-## 8. 检查清单
+## 9. 检查清单
 
 - [ ] `id` 唯一，`chapter` 存在。
 - [ ] `default_level` 在 `levels` 内。
@@ -225,12 +237,13 @@
 - [ ] `source` 的键是 `levels` 子集。
 - [ ] 提示不直接给答案；解法包含"为什么"和"怎么修"。
 - [ ] 所有数据为虚构；不写真实域名、密钥、个人信息。
+- [ ] 若用记忆/子 Agent/下游，确认 `memories` 表、`context.agent_message`、`/sinks` 的档位语义正确。
 - [ ] 运行 `python3 -m unittest discover -s tests -v`，关卡包测试通过。
 - [ ] 浏览器里从漏洞档打到加固档，trace 能解释每一步。
 
 ---
 
-## 9. 调试
+## 10. 调试
 
 ```bash
 python3 server.py

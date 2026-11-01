@@ -42,6 +42,13 @@ def build(lesson, user_id, attempt_id, secret, doc_text=None):
             if doc.get("id") == editable:
                 doc["text"] = doc_text
                 break
+    editable_tool = target.get("editable_tool")
+    mcp_tools = copy.deepcopy(target.get("mcp_tools") or [])
+    if editable_tool and doc_text:
+        for tool in mcp_tools:
+            if tool.get("name") == editable_tool:
+                tool["description"] = doc_text
+                break
     world = {
         "canary": canary,
         "canary_b": canary_b,
@@ -52,7 +59,10 @@ def build(lesson, user_id, attempt_id, secret, doc_text=None):
         "policy": _fill(target.get("policy", ""), canary, canary_b),
         "docs": _fill(docs, canary, canary_b),
         "customers": _fill(copy.deepcopy(target.get("customers") or []), canary, canary_b),
+        "mcp_tools": _fill(mcp_tools, canary, canary_b),
+        "worker_report": _fill(target.get("worker_report", ""), canary, canary_b),
         "orders": copy.deepcopy(target.get("orders") or {}),
+        "refunds": [],
         "mail": [],
         "http": [],
         "tickets": [],
@@ -68,16 +78,25 @@ def build(lesson, user_id, attempt_id, secret, doc_text=None):
             "blocklist": list(target.get("blocklist") or []),
             "xss": bool(target.get("xss")),
             "echo": bool(target.get("echo")),
+            "editable_tool": editable_tool,
+            "downstream": target.get("downstream", ""),
+            "hallucinate": bool(target.get("hallucinate")),
+            "memory_loaded": False,
         },
     }
     return world
 
 
 def editable_text(world):
-    doc_id = world.get("meta", {}).get("editable_doc")
+    meta = world.get("meta", {})
+    doc_id = meta.get("editable_doc")
     for doc in world.get("docs", []):
         if doc.get("id") == doc_id:
             return doc.get("text", "")
+    tool_id = meta.get("editable_tool")
+    for tool in world.get("mcp_tools", []):
+        if tool.get("name") == tool_id:
+            return tool.get("description", "")
     return ""
 
 

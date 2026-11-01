@@ -231,19 +231,19 @@ async function renderCourse(token) {
 
       <div id="course">
         <p class="course-note">
-          编号采用「章.关」：第 4 章（4.1–4.3）仍规划中，所以 3.3 之后直接进入第 5 章的 5.1。不是缺关。
+          编号采用「章.关」：第 4、5 章已全部上线（4.1–4.3、5.1–5.3）；第 6、7 章仍规划中。
         </p>
         ${data.chapters.map(chapterBlock).join("")}
       </div>
 
       <footer class="footer">
         <div>
-          <strong>AgentRange 3.1</strong> · AI 应用安全靶场<br>
+          <strong>AgentRange 3.2</strong> · AI 应用安全靶场<br>
           本地优先 · 默认零外网 · 所有实体、订单与文档均为虚构数据
         </div>
         <div>
-          当前交付：MVP 12 关（P1–P3）<br>
-          研究台 P4 · 剩余关卡与发布 P5
+          当前交付：17 关（P1–P3 + 第 4–5 章）<br>
+          研究台 P4 · 剩余 8 关与发布 P5
         </div>
       </footer>
     </div>`;

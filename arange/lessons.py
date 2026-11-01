@@ -11,7 +11,6 @@ CHAPTERS = [
         "id": "04",
         "title": "Agent 生态与记忆",
         "summary": "MCP 工具描述、长期记忆、多 Agent 信任链——Agent 的供应链。",
-        "planned": ["4.1 MCP 工具投毒", "4.2 记忆投毒", "4.3 多 Agent 信任链"],
     },
     {"id": "05", "title": "输出处理与下游", "summary": "模型输出不是终点。它会被渲染、被执行、被下游系统信任。"},
     {
@@ -55,13 +54,20 @@ def score_for(stats):
 
 
 def _editable_text(lesson):
-    doc_id = (lesson.get("target") or {}).get("editable_doc")
-    if not doc_id:
-        return None
-    for doc in (lesson.get("target") or {}).get("docs") or []:
-        if doc.get("id") == doc_id:
-            return doc.get("text", "")
-    return ""
+    target = lesson.get("target") or {}
+    doc_id = target.get("editable_doc")
+    if doc_id:
+        for doc in target.get("docs") or []:
+            if doc.get("id") == doc_id:
+                return doc.get("text", "")
+        return ""
+    tool_id = target.get("editable_tool")
+    if tool_id:
+        for tool in target.get("mcp_tools") or []:
+            if tool.get("name") == tool_id:
+                return tool.get("description", "")
+        return ""
+    return None
 
 
 def public_lesson(lesson, task_state=None, stats=None):
@@ -111,10 +117,12 @@ def public_lesson(lesson, task_state=None, stats=None):
             "canary_prefix": target.get("canary_prefix", "AR"),
             "xss": bool(target.get("xss")),
             "echo": bool(target.get("echo")),
+            "downstream": target.get("downstream", ""),
         },
-        "editable_doc": bool(target.get("editable_doc")),
-        "editable_doc_id": target.get("editable_doc"),
+        "editable_doc": bool(target.get("editable_doc") or target.get("editable_tool")),
+        "editable_doc_id": target.get("editable_doc") or target.get("editable_tool"),
         "editable_doc_text": _editable_text(lesson),
+        "editable_kind": "tool" if target.get("editable_tool") else "doc",
         "quiz": {"questions": questions} if questions else None,
     }
 
@@ -157,6 +165,15 @@ def evaluate(rule, ctx):
         return bool(canary_b) and canary_b in answer
     if "canary_b_not_in_output" in rule:
         return bool(canary_b) and canary_b not in answer
+    if "memory_loaded" in rule:
+        return bool((world.get("meta") or {}).get("memory_loaded"))
+    if "memory_contains" in rule:
+        needle = str(rule["memory_contains"]).lower()
+        return any(needle in str(item).lower() for item in world.get("memory") or [])
+    if "order_status" in rule:
+        spec = rule["order_status"]
+        order = (world.get("orders") or {}).get(str(spec.get("owner", "")).upper())
+        return bool(order) and order.get("status") == spec.get("equals")
     if "sink_fired" in rule:
         sink = rule["sink_fired"]
         if any(item.get("sink") == sink for item in world.get("sinks") or []):

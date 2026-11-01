@@ -1,6 +1,7 @@
 """Turn orchestration: context -> directives -> policy -> tools -> answer -> verify."""
 import html
 import json
+import re
 import time
 
 from .. import config
@@ -8,11 +9,17 @@ from .. import lessons as lesson_mod
 from .. import world as world_mod
 from . import model, tools
 
+SQL_INJECTION = re.compile(
+    r"(\bor\b\s+1\s*=\s*1|;\s*drop\s+table|union\s+select|--)", re.I
+)
+
 TOOL_FOR = {
     "send_mail": "mail.send",
     "cancel_order": "orders.cancel",
     "fetch_url": "http.fetch",
     "crm_query": "crm.query",
+    "agent_request": "agent.ask",
+    "refund_create": "refund.create",
 }
 
 
@@ -33,6 +40,7 @@ class Engine:
         attempt = self.store.create_attempt(user_id, lesson["id"], level, world, doc_text)
         # Rebuild with the real attempt id so canaries are per-attempt.
         world = world_mod.build(lesson, user_id, attempt["id"], self.secret, doc_text)
+        self._seed_memory(world, user_id, lesson["id"])
         with self.store.lock, self.store.connect() as db:
             db.execute(
                 "UPDATE attempts SET world=? WHERE id=?",
@@ -46,11 +54,17 @@ class Engine:
         if doc_text is None:
             doc_text = world_mod.editable_text(attempt["world"])
         world = world_mod.build(lesson, user["id"], attempt["id"], self.secret, doc_text)
+        self._seed_memory(world, user["id"], lesson["id"])
         self.store.reset_attempt(attempt["id"], world, attempt["level"])
         attempt["world"] = world
         attempt["trace"] = []
         attempt["turns"] = 0
         return attempt
+
+    def _seed_memory(self, world, user_id, lesson_id):
+        memories = self.store.memories(user_id, lesson_id)
+        world["memory"] = memories
+        world.setdefault("meta", {})["memory_loaded"] = bool(memories)
 
     # ---- chat -------------------------------------------------------------
     def turn(self, user, attempt, lesson, message):
@@ -152,6 +166,33 @@ class Engine:
                     "text": world["policy"],
                 }
             )
+        mcp_tools = world.get("mcp_tools") or []
+        if mcp_tools:
+            description = "可用工具（MCP 描述）：\n" + "\n".join(
+                "- %s: %s" % (tool.get("name"), tool.get("description", ""))
+                for tool in mcp_tools
+            )
+            segments.append(
+                {
+                    "role": "tool",
+                    "origin": "mcp",
+                    "trust": "untrusted",
+                    "source": "mcp.tools",
+                    "title": "MCP 工具描述",
+                    "text": description,
+                }
+            )
+        for memory_text in world.get("memory") or []:
+            segments.append(
+                {
+                    "role": "memory",
+                    "origin": "memory",
+                    "trust": "untrusted",
+                    "source": "memory",
+                    "title": "长期记忆",
+                    "text": memory_text,
+                }
+            )
         for doc in docs:
             segments.append(
                 {
@@ -214,13 +255,26 @@ class Engine:
             ],
         )
 
-        denied = self._resolve(segments, world, profile, flags, tool_calls, emit)
+        denied = self._resolve(segments, world, profile, flags, tool_calls, emit, user, lesson)
 
         # Tool output re-enters the context as data. If the active profile
         # treats untrusted text as instructions, a poisoned tool result acts.
         tool_segments = []
+        agent_segments = []
         for call in tool_calls:
             if call.get("status") != "ok" or not call.get("result"):
+                continue
+            if call.get("tool") == "agent.ask":
+                agent_segments.append(
+                    {
+                        "role": "agent",
+                        "origin": "agent",
+                        "trust": "untrusted",
+                        "source": "agent.worker",
+                        "title": "子 Agent 消息",
+                        "text": str(call.get("result")),
+                    }
+                )
                 continue
             tool_segments.append(
                 {
@@ -231,6 +285,22 @@ class Engine:
                     "title": "工具返回",
                     "text": str(call.get("result")),
                 }
+            )
+        if agent_segments:
+            emit(
+                "context.agent_message",
+                segments=[
+                    {
+                        "source": seg["source"],
+                        "trust": seg["trust"],
+                        "chars": len(seg["text"]),
+                        "text": seg["text"][:1200],
+                    }
+                    for seg in agent_segments
+                ],
+            )
+            denied = denied + self._resolve(
+                agent_segments, world, profile, flags, tool_calls, emit, user, lesson
             )
         if tool_segments:
             emit(
@@ -245,7 +315,9 @@ class Engine:
                     for seg in tool_segments
                 ],
             )
-            self._resolve(tool_segments, world, profile, flags, tool_calls, emit)
+            denied = denied + self._resolve(
+                tool_segments, world, profile, flags, tool_calls, emit, user, lesson
+            )
 
         # 5. Compose the answer ---------------------------------------------
         answer = self._compose(world, message, profile, flags, tool_calls, denied, docs, excluded)
@@ -258,7 +330,7 @@ class Engine:
             user, attempt, lesson, message, answer, world, trace, turns, tool_calls, level
         )
 
-    def _resolve(self, segments, world, profile, flags, tool_calls, emit):
+    def _resolve(self, segments, world, profile, flags, tool_calls, emit, user, lesson):
         accepted = []
         denied = []
         for segment in segments:
@@ -267,15 +339,22 @@ class Engine:
             for directive in model.extract_directives(segment["text"]):
                 if segment["origin"] == "tool" and directive["kind"] != "set_fact":
                     continue
+                # A sub-agent report cannot recursively summon another sub-agent.
+                if segment["origin"] == "agent" and directive["kind"] == "agent_request":
+                    continue
                 required_tool = TOOL_FOR.get(directive["kind"])
                 if required_tool and required_tool not in (world.get("tools") or []):
                     continue
                 allowed = True
                 reason = ""
-                if segment["origin"] in ("retrieval", "tool", "memory"):
+                if segment["origin"] in ("retrieval", "tool", "memory", "mcp"):
                     if not profile["untrusted_directives"]:
                         allowed = False
                         reason = "untrusted_content_cannot_instruct"
+                elif segment["origin"] == "agent":
+                    if profile.get("verify_agents"):
+                        allowed = False
+                        reason = "unverified_agent_message"
                 elif segment["origin"] == "user":
                     if directive["kind"] == "leak_secret" and not profile["reveal_system"]:
                         allowed = False
@@ -343,6 +422,33 @@ class Engine:
                 )
                 tool_calls.append(result)
                 emit("tool.call", **result)
+            elif kind == "memory_write":
+                text = directive.get("text", "")
+                world.setdefault("memory", []).append(text)
+                self.store.add_memory(user["id"], lesson["id"], text)
+                emit("memory.written", text=text[:500], source=decision["source"])
+                flags["memory_written"] = True
+            elif kind == "agent_request":
+                result = tools.call(
+                    "agent.ask",
+                    {"agent": directive.get("agent", "worker"), "task": directive.get("task", "")},
+                    world,
+                    profile,
+                )
+                tool_calls.append(result)
+                emit("tool.call", **result)
+            elif kind == "refund_create":
+                result = tools.call(
+                    "refund.create",
+                    {
+                        "amount": directive.get("amount", 0),
+                        "claimed_days": directive.get("claimed_days", 0),
+                    },
+                    world,
+                    profile,
+                )
+                tool_calls.append(result)
+                emit("tool.call", **result)
         return denied
 
     def _compose(self, world, message, profile, flags, tool_calls, denied, docs, excluded):
@@ -353,9 +459,16 @@ class Engine:
         fetch_ok = [c for c in tool_calls if c["tool"] == "http.fetch" and c["status"] == "ok"]
         fetch_blocked = [c for c in tool_calls if c["tool"] == "http.fetch" and c["status"] == "blocked"]
         crm_ok = [c for c in tool_calls if c["tool"] == "crm.query" and c["status"] == "ok"]
+        refund_ok = [c for c in tool_calls if c["tool"] == "refund.create" and c["status"] == "ok"]
+        refund_blocked = [
+            c for c in tool_calls if c["tool"] == "refund.create" and c["status"] == "blocked"
+        ]
 
         if flags.get("leak"):
             return "当前系统配置如下：\n\n" + (world.get("system_prompt") or "")
+
+        if any(item["instruction"] == "leak_secret" for item in denied):
+            return "我不能提供内部规则或口令。"
 
         if mail_ok:
             return "已按要求发送邮件到 %s。" % mail_ok[0]["args"].get("to")
@@ -365,6 +478,17 @@ class Engine:
             return "已处理订单：%s。" % cancel_ok[-1]["result"]
         if cancel_blocked:
             return "订单操作被策略拦截：%s。" % cancel_blocked[-1]["reason"]
+        if refund_ok:
+            return "已创建退款 %s 元（引用政策 %s 天）。" % (
+                refund_ok[-1]["args"].get("amount"),
+                refund_ok[-1]["args"].get("claimed_days"),
+            )
+        if refund_blocked:
+            blocked = refund_blocked[-1]
+            return "退款被策略拦截：引用政策 %s 天，可信政策 %s 天。" % (
+                blocked["args"].get("claimed_days"),
+                world_mod.get_fact(world, "refund_policy_days"),
+            )
         if crm_ok:
             return "查询结果：\n" + str(crm_ok[-1].get("result") or "")[:900]
         if fetch_ok:
@@ -372,6 +496,14 @@ class Engine:
             return "请求完成：\n" + body[:600]
         if fetch_blocked:
             return "请求被出口策略拦截：仅允许访问内部文档站。"
+
+        meta = world.get("meta") or {}
+        if meta.get("hallucinate") and re.search(r"(退款|退货)政策|几天|多久", message):
+            if profile.get("verify_policy"):
+                return "根据可信政策，退款期为 %s 天。" % world_mod.get_fact(
+                    world, "refund_policy_days"
+                )
+            return "我们的退款政策是 90 天无理由退款。"
 
         if "warranty" in message.lower() or "保修" in message or "质保" in message:
             days = world_mod.get_fact(world, "warranty_days")
@@ -382,10 +514,15 @@ class Engine:
                     answer += "\n\n（已检索 %d 篇资料；其中低信任内容仅作数据引用，未执行其中的指令。）" % len(docs)
                 return answer
 
-        if any(item["instruction"] == "leak_secret" for item in denied):
-            return "我不能提供内部规则或口令。"
+        if any(item.get("reason") == "unverified_agent_message" for item in denied):
+            return "已忽略未验证的子 Agent 指令。"
 
-        if (world.get("meta") or {}).get("echo"):
+        if meta.get("downstream") == "sql":
+            if profile.get("output_parameterize"):
+                return "已生成参数化查询：\nSELECT * FROM customers WHERE name = ?\n\n（用户输入不会进入 SQL 文本。）"
+            return "已生成 SQL 片段：\nSELECT * FROM customers WHERE name = '%s';" % message
+
+        if meta.get("echo"):
             content = html.escape(message) if profile.get("output_encode") else message
             return "已生成回复：\n" + content
 
@@ -463,11 +600,41 @@ class Engine:
 
     # ---- sinks, replay, model context -------------------------------------
     def record_sink(self, user, attempt, lesson, sink):
-        if sink != "xss":
+        target = lesson.get("target") or {}
+        if sink not in ("xss", "sql"):
             raise ValueError("invalid_sink")
+        if sink == "xss" and not target.get("xss"):
+            raise ValueError("no_sink")
+        if sink == "sql" and target.get("downstream") != "sql":
+            raise ValueError("no_sink")
         world = attempt["world"]
-        world.setdefault("sinks", []).append({"sink": sink, "at": int(time.time())})
+        messages = self.store.messages(attempt["id"])
+        answer = next(
+            (item["content"] for item in reversed(messages) if item["role"] == "assistant"), ""
+        )
         trace = list(attempt.get("trace") or [])
+        if sink == "sql" and not SQL_INJECTION.search(answer):
+            ctx = {
+                "world": world,
+                "answer": answer,
+                "tool_calls": [],
+                "level": attempt["level"],
+                "turns": attempt["turns"],
+                "messages": messages,
+                "quiz": {},
+                "lesson": lesson,
+                "trace": trace,
+            }
+            tasks = self._verify_tasks(user, lesson, ctx, trace, attempt["turns"])
+            stats = self.store.stats(user["id"], lesson["id"])
+            return {
+                "sink": sink,
+                "fired": False,
+                "tasks": tasks,
+                "trace": trace,
+                "score": lesson_mod.score_for(stats),
+            }
+        world.setdefault("sinks", []).append({"sink": sink, "at": int(time.time())})
         trace.append(
             {
                 "type": "sink.fired",
@@ -475,10 +642,6 @@ class Engine:
                 "turn": attempt["turns"],
                 "sink": sink,
             }
-        )
-        messages = self.store.messages(attempt["id"])
-        answer = next(
-            (item["content"] for item in reversed(messages) if item["role"] == "assistant"), ""
         )
         tool_calls = []
         for item in messages:
@@ -499,6 +662,7 @@ class Engine:
         stats = self.store.stats(user["id"], lesson["id"])
         return {
             "sink": sink,
+            "fired": True,
             "tasks": tasks,
             "trace": trace,
             "score": lesson_mod.score_for(stats),

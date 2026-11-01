@@ -69,7 +69,7 @@ class ApiTests(unittest.TestCase):
         status, headers, raw = self.request("/api/me")
         self.assertEqual(status, 200)
         me = json.loads(raw)
-        self.assertEqual(me["progress"]["lessons_total"], 12)
+        self.assertEqual(me["progress"]["lessons_total"], 17)
         self.assertFalse(me["model"]["enabled"])
 
     def test_course_map(self):
@@ -77,12 +77,11 @@ class ApiTests(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(len(payload["chapters"]), 8)
         lessons = [lesson for chapter in payload["chapters"] for lesson in chapter["lessons"]]
-        self.assertEqual({lesson["id"] for lesson in lessons}, {"0.1", "0.2", "1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "3.1", "3.2", "3.3", "5.1"})
-        self.assertEqual(payload["progress"]["tasks_total"], 35)
+        self.assertEqual({lesson["id"] for lesson in lessons}, {"0.1", "0.2", "1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "3.1", "3.2", "3.3", "4.1", "4.2", "4.3", "5.1", "5.2", "5.3"})
+        self.assertEqual(payload["progress"]["tasks_total"], 50)
         chapter4 = next(chapter for chapter in payload["chapters"] if chapter["id"] == "04")
-        self.assertTrue(chapter4["upcoming"])
-        self.assertIn("4.1", chapter4["planned"][0])
-        self.assertEqual(chapter4["lessons"], [])
+        self.assertFalse(chapter4["upcoming"])
+        self.assertEqual({lesson["id"] for lesson in chapter4["lessons"]}, {"4.1", "4.2", "4.3"})
 
     def test_full_attempt_flow(self):
         status, _, payload = self.json("/api/lessons/1.1/attempts", "POST", {"level": "vulnerable"})

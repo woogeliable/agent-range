@@ -64,6 +64,14 @@ CREATE TABLE IF NOT EXISTS lesson_stats(
   solution_used INTEGER NOT NULL DEFAULT 0,
   PRIMARY KEY(user_id, lesson_id)
 );
+CREATE TABLE IF NOT EXISTS memories(
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id TEXT NOT NULL,
+  lesson_id TEXT NOT NULL,
+  text TEXT NOT NULL,
+  created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_memories_user_lesson ON memories(user_id, lesson_id, id);
 """
 
 
@@ -134,6 +142,27 @@ class Store:
                 (_digest(token), int(time.time())),
             ).fetchone()
         return dict(row) if row else None
+
+    # ---- persistent memory -------------------------------------------------
+    def add_memory(self, user_id, lesson_id, text):
+        text = (text or "").strip()
+        if not text:
+            return None
+        with self.lock, self.connect() as db:
+            cursor = db.execute(
+                "INSERT INTO memories(user_id, lesson_id, text, created_at) VALUES(?,?,?,?)",
+                (user_id, lesson_id, text[:2000], int(time.time())),
+            )
+        return cursor.lastrowid
+
+    def memories(self, user_id, lesson_id, limit=6):
+        with self.connect() as db:
+            rows = db.execute(
+                "SELECT text FROM memories WHERE user_id=? AND lesson_id=? "
+                "ORDER BY id DESC LIMIT ?",
+                (user_id, lesson_id, limit),
+            ).fetchall()
+        return [row["text"] for row in reversed(rows)]
 
     # ---- attempts ---------------------------------------------------------
     def create_attempt(self, user_id, lesson_id, level, world, doc_text=None):

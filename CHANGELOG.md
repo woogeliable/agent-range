@@ -1,5 +1,33 @@
 # Changelog
 
+## 3.2.0 — 2026-11-02
+
+第 4 章全部、第 5 章全部上线：课程从 12 关扩到 17 关，补齐 MCP、记忆、多 Agent、SQL 下游与幻觉动作。
+
+### Added
+- 5 个新关卡：`4.1` MCP 工具投毒、`4.2` 记忆投毒、`4.3` 多 Agent 信任链、`5.2` 输出当命令 → SQL 注入、`5.3` 幻觉导致错误动作。
+- 运行时原语：MCP 工具描述进入上下文并可按关卡编辑；长期记忆写入 SQLite `memories` 表并跨 attempt 注入；`agent.ask` 返回子 Agent 报告；`refund.create` 沙箱退款。
+- 四档语义：漏洞版信任工具描述/记忆/子 Agent、把输出原样拼 SQL、引用幻觉政策；基础过滤只挡显式注入；加固版把上述内容一律标为 untrusted 数据，并校验引用政策；参考实现全开。
+- 新 verifier：`memory_loaded`、`memory_contains`、`order_status`；`sink_fired` 支持 `sink: "sql"`。
+- trace：`context.agent_message`、`memory.written`、`sink.fired(sql)`；上下文新增 `mcp` 与 `memory` 段。
+- API：`/sinks` 支持 `sql`，并校验关卡确实声明了下游 SQL；`public_lesson` 暴露 `editable_kind` 与 `meta.downstream`。
+- 前端：MCP 工具描述编辑器、SQL 模拟器按钮、子 Agent/记忆事件展示；课程地图第 4、5 章标为已上线。
+- 88 项自动化测试（新增 `tests/test_p4.py`，覆盖 5 关 × 四档）。
+
+### Changed
+- 版本号 3.2.0；`Server: AgentRange/3.2`；首页品牌同步。
+- 课程页说明改为「第 4、5 章已全部上线；第 6、7 章规划中」，不再把第 4 章标记为 planned。
+- 记忆在新建/重置 attempt 时注入最近 6 条，重置不清空记忆（4.2 的教学点）。
+
+### Fixed
+- 子 Agent 消息与工具返回被二次解析时，denied 结果会累加回本轮，加固版能正确显示「已忽略未验证的子 Agent 指令」。
+- `refund.create` 在缺少金额或金额非正数时返回 `invalid_amount`，不再产生 0 元退款。
+
+### Deferred
+- 第 6–8 章剩余 8 关。
+- 研究台批量评测、ASR/良性误拦率、导出与回归门禁（P4）。
+- 讲师视图、Docker、双语（P5）。
+
 ## 3.1.0 — 2026-11-01
 
 P3：把 MVP 从 5 关扩到 12 关，并补上研究/对比所需的观测与重放能力。
