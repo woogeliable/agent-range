@@ -9,3 +9,6 @@ Thumbs.db
 
 .agent-range/
 data/state.json
+
+# AgentRange 3.0 runtime data
+.range/
