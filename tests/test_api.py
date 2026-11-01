@@ -79,6 +79,10 @@ class ApiTests(unittest.TestCase):
         lessons = [lesson for chapter in payload["chapters"] for lesson in chapter["lessons"]]
         self.assertEqual({lesson["id"] for lesson in lessons}, {"0.1", "0.2", "1.1", "1.2", "1.3", "1.4", "2.1", "2.2", "3.1", "3.2", "3.3", "5.1"})
         self.assertEqual(payload["progress"]["tasks_total"], 35)
+        chapter4 = next(chapter for chapter in payload["chapters"] if chapter["id"] == "04")
+        self.assertTrue(chapter4["upcoming"])
+        self.assertIn("4.1", chapter4["planned"][0])
+        self.assertEqual(chapter4["lessons"], [])
 
     def test_full_attempt_flow(self):
         status, _, payload = self.json("/api/lessons/1.1/attempts", "POST", {"level": "vulnerable"})

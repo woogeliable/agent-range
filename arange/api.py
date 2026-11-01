@@ -204,6 +204,7 @@ class Api:
                     "title": chapter["title"],
                     "summary": chapter["summary"],
                     "upcoming": not items,
+                    "planned": chapter.get("planned") or [],
                     "lessons": items,
                 }
             )

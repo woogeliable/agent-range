@@ -107,6 +107,7 @@ function lessonCard(lesson) {
 
 function chapterBlock(chapter) {
   if (chapter.upcoming) {
+    const planned = chapter.planned || [];
     return `
       <section class="chapter" id="chapter-${esc(chapter.id)}">
         <div class="chapter-head">
@@ -118,14 +119,18 @@ function chapterBlock(chapter) {
           <div class="chapter-progress"><strong>—</strong>规划中</div>
         </div>
         <div class="upcoming-grid">
-          <div class="upcoming-card">
-            <h3>即将上线</h3>
-            <p>本章关卡将在 P3–P4 加入：投放、越权、引用伪造、外泄通道等。</p>
-          </div>
-          <div class="upcoming-card">
-            <h3>同样的关卡模板</h3>
-            <p>任务清单、服务端验证、3 级提示、4 档防御与源码 diff。</p>
-          </div>
+          ${
+            planned.length
+              ? planned
+                  .map(
+                    (title) => `<div class="upcoming-card">
+                      <h3>${esc(title)}</h3>
+                      <p>本章暂未上线；编号保留，避免打乱课程体系。</p>
+                    </div>`
+                  )
+                  .join("")
+              : `<div class="upcoming-card"><h3>即将上线</h3><p>本章关卡将在后续版本加入。</p></div>`
+          }
         </div>
       </section>`;
   }
@@ -225,6 +230,9 @@ async function renderCourse(token) {
       </section>
 
       <div id="course">
+        <p class="course-note">
+          编号采用「章.关」：第 4 章（4.1–4.3）仍规划中，所以 3.3 之后直接进入第 5 章的 5.1。不是缺关。
+        </p>
         ${data.chapters.map(chapterBlock).join("")}
       </div>
 
@@ -235,7 +243,7 @@ async function renderCourse(token) {
         </div>
         <div>
           当前交付：MVP 12 关（P1–P3）<br>
-          MVP 12 关 · 研究台 · 真实模型接入按 P3–P5 推进
+          研究台 P4 · 剩余关卡与发布 P5
         </div>
       </footer>
     </div>`;
