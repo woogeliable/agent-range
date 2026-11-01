@@ -147,6 +147,7 @@ function render() {
     <div class="lesson-shell">
       <div class="breadcrumb">
         <a href="/" data-link>课程地图</a><span class="sep">/</span>
+        ${data.chapter.stage_title ? `<span>${esc(data.chapter.stage_title)}</span><span class="sep">/</span>` : ""}
         <span>${esc(data.chapter.id || "")} ${esc(data.chapter.title || "")}</span><span class="sep">/</span>
         <span>${esc(lesson.id)}</span>
       </div>
@@ -162,6 +163,7 @@ function render() {
           <div class="meta-row">
             ${difficultyDots(lesson.difficulty)}
             <span class="meta-chip">${esc(lesson.minutes)} 分钟</span>
+            ${data.chapter.stage_title ? `<span class="meta-chip stage-chip">${esc(data.chapter.stage_title)}路径</span>` : ""}
             <span class="meta-chip">${lesson.type === "quiz" ? "概念测验" : "交互实验"}</span>
             ${(lesson.mapping || []).map((item) => `<span class="meta-chip map">${esc(item)}</span>`).join("")}
           </div>

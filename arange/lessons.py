@@ -3,16 +3,17 @@ import json
 import os
 
 CHAPTERS = [
-    {"id": "00", "title": "起点", "summary": "先建立心智模型：AI 应用的攻击面不是一条 API，而是一条上下文流水线。"},
-    {"id": "01", "title": "提示注入与上下文边界", "summary": "用户输入、检索文档、工具返回值都会进入同一个上下文。谁被当成指令，谁就赢了。"},
-    {"id": "02", "title": "RAG 与知识库", "summary": "检索不是只读：投毒、越权、引用伪造与外泄都发生在检索前后。"},
-    {"id": "03", "title": "Agent 工具与权限", "summary": "Agent 的手比嘴危险。参数、身份、审批、出网，每一层都能被绕过。"},
+    {"id": "00", "stage": "foundation", "title": "起点", "summary": "先建立心智模型：AI 应用的攻击面不是一条 API，而是一条上下文流水线。"},
+    {"id": "01", "stage": "foundation", "title": "提示注入与上下文边界", "summary": "用户输入、检索文档、工具返回值都会进入同一个上下文。谁被当成指令，谁就赢了。"},
+    {"id": "02", "stage": "applied", "title": "RAG 与知识库", "summary": "检索不是只读：投毒、越权、引用伪造与外泄都发生在检索前后。"},
+    {"id": "03", "stage": "applied", "title": "Agent 工具与权限", "summary": "Agent 的手比嘴危险。参数、身份、审批、出网，每一层都能被绕过。"},
     {
         "id": "04",
+        "stage": "challenge",
         "title": "Agent 生态与记忆",
         "summary": "MCP 工具描述、长期记忆、多 Agent 信任链——Agent 的供应链。",
     },
-    {"id": "05", "title": "输出处理与下游", "summary": "模型输出不是终点。它会被渲染、被执行、被下游系统信任。"},
+    {"id": "05", "stage": "challenge", "title": "输出处理与下游", "summary": "模型输出不是终点。它会被渲染、被执行、被下游系统信任。"},
     {
         "id": "06",
         "title": "模型与数据面",
@@ -28,6 +29,32 @@ CHAPTERS = [
 ]
 
 CHAPTER_MAP = {chapter["id"]: chapter for chapter in CHAPTERS}
+
+STAGES = [
+    {
+        "id": "foundation",
+        "title": "初阶",
+        "subtitle": "先建立信任边界",
+        "summary": "从第一血到过滤器绕过：亲手打穿一条上下文流水线，学会区分指令与数据。",
+        "chapters": ["00", "01"],
+    },
+    {
+        "id": "applied",
+        "title": "中阶",
+        "subtitle": "把注入迁移到真实组件",
+        "summary": "把同一个心智模型套到 RAG、多租户、工具参数、混淆代理与 SSRF 上。",
+        "chapters": ["02", "03"],
+    },
+    {
+        "id": "challenge",
+        "title": "高阶",
+        "subtitle": "跨组件信任链与下游动作",
+        "summary": "MCP、长期记忆、多 Agent、输出渲染与下游命令：攻击面从一次对话扩展到整条供应链。",
+        "chapters": ["04", "05"],
+    },
+]
+
+STAGE_MAP = {stage["id"]: stage for stage in STAGES}
 
 
 def load(directory):

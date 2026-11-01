@@ -63,7 +63,7 @@
 | 字段 | 必填 | 说明 |
 |---|---|---|
 | `id` | ✅ | 唯一，建议 `章.关`，如 `1.4` |
-| `chapter` | ✅ | `00`–`07`，必须在 `arange/lessons.py::CHAPTERS` 中 |
+| `chapter` | ✅ | `00`–`07`，必须在 `arange/lessons.py::CHAPTERS` 中；章节的 `stage` 决定它出现在初阶/中阶/高阶路径 |
 | `title` / `subtitle` | ✅ | 课程卡片与关卡页标题 |
 | `difficulty` | ✅ | 0–3，前端显示为点 |
 | `minutes` | ✅ | 预计时间 |
@@ -107,6 +107,16 @@
 | `tenant` / `user` | 世界主体，默认 `A` / `alice` |
 
 文档里的 `trust` 只用于展示与黑名单，不改变"检索段不能产生指令"的规则。
+
+### 章节与难度阶段
+
+难度路径不依赖 lesson JSON 里额外的字段，而是由 `CHAPTERS` 的 `stage` 决定：
+
+```python
+{"id": "04", "stage": "challenge", "title": "Agent 生态与记忆", ...}
+```
+
+可选阶段是 `foundation`（初阶）、`applied`（中阶）、`challenge`（高阶）。新增章节时必须给 `stage`，否则它不会出现在难度路径里。不要把单关 `difficulty` 当作阶段来源：`difficulty` 只表示攻击复杂度，阶段表示课程前置与学习顺序。
 
 ---
 

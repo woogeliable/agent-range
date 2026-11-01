@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""AgentRange 3.2 — local-first AI application security range."""
+"""AgentRange 3.3 — local-first AI application security range."""
 import argparse
 import os
 import sys
@@ -13,7 +13,7 @@ LOOPBACK = {"127.0.0.1", "::1", "localhost"}
 def main(argv=None):
     parser = argparse.ArgumentParser(
         prog="agent-range",
-        description="AgentRange 3.2 — AI application security range (local-first).",
+        description="AgentRange 3.3 — AI application security range (local-first).",
     )
     parser.add_argument(
         "--host",

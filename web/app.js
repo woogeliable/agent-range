@@ -2,7 +2,17 @@ import { api, esc, toast, icon, difficultyDots } from "./api.js";
 import { mountLesson, unmountLesson } from "./lesson.js";
 
 const app = document.getElementById("app");
-const state = { me: null, course: null, routeToken: 0 };
+const COURSE_VIEW_KEY = "ar.courseView";
+
+function storedCourseView() {
+  try {
+    return localStorage.getItem(COURSE_VIEW_KEY) === "stage" ? "stage" : "chapter";
+  } catch (error) {
+    return "chapter";
+  }
+}
+
+const state = { me: null, course: null, routeToken: 0, courseView: storedCourseView() };
 
 /* ---------------- chrome ---------------- */
 function renderChrome(me) {
@@ -41,6 +51,20 @@ function navigate(path) {
 }
 
 document.addEventListener("click", (event) => {
+  const viewButton = event.target.closest('[data-action="course-view"]');
+  if (viewButton) {
+    event.preventDefault();
+    const view = viewButton.dataset.view === "stage" ? "stage" : "chapter";
+    if (view === state.courseView) return;
+    state.courseView = view;
+    try {
+      localStorage.setItem(COURSE_VIEW_KEY, view);
+    } catch (error) {
+      /* localStorage can be unavailable in strict browser modes */
+    }
+    paintCourse();
+    return;
+  }
   const link = event.target.closest("a[data-link]");
   if (!link) return;
   if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
@@ -152,6 +176,71 @@ function chapterBlock(chapter) {
     </section>`;
 }
 
+function stageBlock(stage, allChapters) {
+  const chapters = (stage.chapters || [])
+    .map((id) => allChapters.find((chapter) => chapter.id === id))
+    .filter(Boolean);
+  const lessons = chapters.reduce((acc, chapter) => acc.concat(chapter.lessons || []), []);
+  const next = lessons.find((lesson) => !lesson.done) || lessons[0];
+  const total = stage.total_tasks || 0;
+  const done = stage.completed_tasks || 0;
+  const pct = total ? Math.round((done * 100) / total) : 0;
+  const allDone = lessons.length > 0 && lessons.every((lesson) => lesson.done);
+  return `
+    <section class="stage" id="stage-${esc(stage.id)}">
+      <header class="stage-head">
+        <div class="stage-kicker">${esc(stage.title)}</div>
+        <div class="stage-info">
+          <h2>${esc(stage.subtitle || stage.title)}</h2>
+          <p>${esc(stage.summary || "")}</p>
+          <div class="stage-meta">
+            <span>${esc(stage.lesson_count || lessons.length)} 关</span>
+            <span>${esc(stage.minutes || 0)} 分钟</span>
+            <span>${esc(stage.completed_lessons || 0)}/${esc(stage.lesson_count || lessons.length)} 关卡完成</span>
+            <span>${done}/${total} 任务</span>
+          </div>
+        </div>
+        ${
+          next
+            ? `<a class="btn btn-sm" href="/lesson/${esc(next.id)}" data-link>${allDone ? "复习本阶段" : "继续本阶段"}</a>`
+            : ""
+        }
+      </header>
+      <div class="stage-progressbar"><i style="width:${pct}%"></i></div>
+      ${chapters.map(chapterBlock).join("")}
+    </section>`;
+}
+
+function courseMarkup(data, view) {
+  const stageView = view === "stage" && data.stages && data.stages.length;
+  const sections = stageView
+    ? data.stages.map((stage) => stageBlock(stage, data.chapters)).join("")
+    : data.chapters.map(chapterBlock).join("");
+  return `
+    <div class="course-toolbar">
+      <div>
+        <h2>课程地图</h2>
+        <p>按章节读故事，或按难度路径逐级推进；两种视图共用同一份进度。</p>
+      </div>
+      <div class="view-switch" role="group" aria-label="课程视图">
+        <button type="button" class="view-btn ${view === "chapter" ? "is-active" : ""}" data-action="course-view" data-view="chapter" aria-pressed="${view === "chapter"}">章节视图</button>
+        <button type="button" class="view-btn ${view === "stage" ? "is-active" : ""}" data-action="course-view" data-view="stage" aria-pressed="${view === "stage"}">难度路径</button>
+      </div>
+    </div>
+    <p class="course-note">
+      编号采用「章.关」：第 4、5 章已全部上线（4.1–4.3、5.1–5.3）。难度路径按章节带分组：初阶 6 关 / 中阶 5 关 / 高阶 6 关，只做推荐，不锁定关卡。第 1.5、2.3–2.4、3.4–3.7、6–7 章仍规划中。
+    </p>
+    ${sections}`;
+}
+
+function paintCourse() {
+  const host = document.getElementById("course");
+  if (!host || !state.course) return;
+  host.innerHTML = courseMarkup(state.course, state.courseView);
+  const active = host.querySelector('[data-action="course-view"].is-active');
+  if (active) active.focus({ preventScroll: true });
+}
+
 function heroArt() {
   return `
     <div class="hero-art" aria-hidden="true">
@@ -230,15 +319,12 @@ async function renderCourse(token) {
       </section>
 
       <div id="course">
-        <p class="course-note">
-          编号采用「章.关」：第 4、5 章已全部上线（4.1–4.3、5.1–5.3）；第 1.5、2.3–2.4、3.4–3.7、6–7 章仍规划中。
-        </p>
-        ${data.chapters.map(chapterBlock).join("")}
+        ${courseMarkup(data, state.courseView)}
       </div>
 
       <footer class="footer">
         <div>
-          <strong>AgentRange 3.2</strong> · AI 应用安全靶场<br>
+          <strong>AgentRange 3.3</strong> · AI 应用安全靶场<br>
           本地优先 · 默认零外网 · 所有实体、订单与文档均为虚构数据
         </div>
         <div>

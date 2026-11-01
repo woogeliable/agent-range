@@ -1,4 +1,4 @@
-# 运行时架构（3.2）
+# 运行时架构（3.3）
 
 > 目标：让"攻击是否成功"由真实的数据流与服务端证据决定，而不是由教程关键词决定；同时保证所有副作用都在沙箱内。
 
@@ -206,6 +206,18 @@ verifier 在 `arange/lessons.py`，支持的谓词：
 
 反事实重放（`POST /api/attempts/{id}/replay`）只复制源实验的用户消息与 `doc_text`，在目标档位新建 attempt 后逐条重放；返回 source / replay 的回答、facts 与工具调用摘要。长期记忆按用户+关卡共享，重放会读到同一份记忆。
 
+### 课程阶段
+
+`arange/lessons.py` 的 `STAGES` 把章节带映射为三段课程路径，`GET /api/lessons` 同时返回 `stages`：
+
+| 阶段 | 章节 | 关卡数 | 时长 |
+|---|---|---:|---:|
+| 初阶 `foundation` | 第 0–1 章 | 6 | 66 分钟 |
+| 中阶 `applied` | 第 2–3 章 | 5 | 93 分钟 |
+| 高阶 `challenge` | 第 4–5 章 | 6 | 115 分钟 |
+
+阶段只是前端的一种课程视图：不改关卡 ID、URL、章节归属或进度表。难度路径显示阶段进度与推荐下一关，但不锁定未完成前置的关卡。
+
 ---
 
 ## 8. HTTP 与安全
@@ -225,7 +237,7 @@ verifier 在 `arange/lessons.py`，支持的谓词：
 
 | 想做什么 | 改哪里 |
 |---|---|
-| 加一关 | `lessons/*.json`，见 `docs/lesson-authoring.md` |
+| 加一关 | `lessons/*.json` + 给 `CHAPTERS` 对应章节标 `stage`，见 `docs/lesson-authoring.md` |
 | 加工具 | `arange/runtime/tools.py` + 关卡 `target.tools` |
 | 加验证谓词 | `arange/lessons.py::evaluate` |
 | 加防御档 | `PROFILES` + 关卡 `levels` / `source` |

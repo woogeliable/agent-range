@@ -205,10 +205,31 @@ class Api:
                     "summary": chapter["summary"],
                     "upcoming": not items,
                     "planned": chapter.get("planned") or [],
+                    "stage": chapter.get("stage", ""),
                     "lessons": items,
                 }
             )
-        return {"chapters": chapters, "progress": self._summary(user)}
+        stages = []
+        for stage in lesson_mod.STAGES:
+            stage_chapters = [item for item in chapters if item["stage"] == stage["id"]]
+            stage_lessons = [
+                lesson for chapter in stage_chapters for lesson in chapter["lessons"]
+            ]
+            stages.append(
+                {
+                    "id": stage["id"],
+                    "title": stage["title"],
+                    "subtitle": stage["subtitle"],
+                    "summary": stage["summary"],
+                    "chapters": [chapter["id"] for chapter in stage_chapters],
+                    "lesson_count": len(stage_lessons),
+                    "minutes": sum(lesson.get("minutes", 10) for lesson in stage_lessons),
+                    "completed_lessons": sum(1 for lesson in stage_lessons if lesson["done"]),
+                    "completed_tasks": sum(lesson["completed_tasks"] for lesson in stage_lessons),
+                    "total_tasks": sum(lesson["total_tasks"] for lesson in stage_lessons),
+                }
+            )
+        return {"chapters": chapters, "stages": stages, "progress": self._summary(user)}
 
     def _lesson_detail(self, user, lesson_id):
         lesson = self._lesson(lesson_id)
@@ -220,10 +241,16 @@ class Api:
             if latest:
                 attempt = self.engine.public_attempt(latest, lesson)
         chapter = lesson_mod.CHAPTER_MAP.get(lesson["chapter"], {})
+        stage = lesson_mod.STAGE_MAP.get(chapter.get("stage"), {})
         hints = lesson.get("hints") or []
         return {
             "lesson": public,
-            "chapter": {"id": chapter.get("id"), "title": chapter.get("title", "")},
+            "chapter": {
+                "id": chapter.get("id"),
+                "title": chapter.get("title", ""),
+                "stage": chapter.get("stage", ""),
+                "stage_title": stage.get("title", ""),
+            },
             "attempt": attempt,
             "revealed_hints": hints[: int(stats.get("hints_used", 0))],
             "solution": lesson.get("solution") if stats.get("solution_used") else None,
