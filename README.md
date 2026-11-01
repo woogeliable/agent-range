@@ -11,7 +11,7 @@
 每一关都有**任务清单、服务端判定、3 级提示、参考解法、四档防御和源码 diff**。
 
 > **当前交付：17 关（P1–P3 + 第 4 章全部 + 第 5 章全部）**
-> 研究台（语料/ASR/消融）、Dify/Coze 兼容层与剩余 8 关按 P4–P5 推进。设计与路线图见 [`docs/redesign-v3.md`](docs/redesign-v3.md)。
+> 研究台（语料/ASR/消融）、Dify/Coze 兼容层与其余规划关卡按 P4–P5 推进。设计与路线图见 [`docs/redesign-v3.md`](docs/redesign-v3.md)。
 
 ---
 
@@ -244,15 +244,15 @@ python3 -m unittest discover -s tests -v
 |---|---|
 | **P1–P3 + 第 4–5 章（当前）** | 骨架、运行时、17 关、四档源码、trace 检查器、实验记录、反事实重放、真实模型只读 UI、MCP/记忆/多 Agent/输出下游 |
 | P4 | 研究台：语料批量评测、ASR/良性误拦率、消融、导出、回归门禁 |
-| P5 | 剩余 8 关、讲师视图、Docker、双语、无障碍与发布 |
+| P5 | 其余规划关卡、讲师视图、Docker、双语、无障碍与发布 |
 
-完整设计与 25 关课程表见 [`docs/redesign-v3.md`](docs/redesign-v3.md)。
+完整设计与 30 关课程表见 [`docs/redesign-v3.md`](docs/redesign-v3.md)。
 
 ---
 
 ## 文档
 
-- [改造设计方案（25 关课程表与路线图）](docs/redesign-v3.md)
+- [改造设计方案（30 关课程表与路线图）](docs/redesign-v3.md)
 - [运行时架构](docs/architecture.md)
 - [关卡编写指南](docs/lesson-authoring.md)
 - [变更记录](CHANGELOG.md)

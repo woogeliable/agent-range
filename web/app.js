@@ -231,7 +231,7 @@ async function renderCourse(token) {
 
       <div id="course">
         <p class="course-note">
-          编号采用「章.关」：第 4、5 章已全部上线（4.1–4.3、5.1–5.3）；第 6、7 章仍规划中。
+          编号采用「章.关」：第 4、5 章已全部上线（4.1–4.3、5.1–5.3）；第 1.5、2.3–2.4、3.4–3.7、6–7 章仍规划中。
         </p>
         ${data.chapters.map(chapterBlock).join("")}
       </div>
@@ -243,7 +243,7 @@ async function renderCourse(token) {
         </div>
         <div>
           当前交付：17 关（P1–P3 + 第 4–5 章）<br>
-          研究台 P4 · 剩余 8 关与发布 P5
+          研究台 P4 · 其余规划关卡与发布 P5
         </div>
       </footer>
     </div>`;
